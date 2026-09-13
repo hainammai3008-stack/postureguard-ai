@@ -363,3 +363,33 @@ footer{
   .home-hero{grid-template-columns:1fr}
   .home-cards{grid-template-columns:1fr}
 }
+
+.two-tabs{grid-template-columns:1fr 1fr!important}
+.home-hero{
+  display:grid;
+  grid-template-columns:minmax(0,1fr) 280px;
+  gap:24px;
+  align-items:center;
+  padding:30px;
+  margin-bottom:20px;
+}
+.home-hero h2{font-size:clamp(28px,4vw,44px);margin-bottom:10px}
+.home-hero p{max-width:760px;font-size:16px;line-height:1.7}
+.eyebrow{display:inline-block;margin-bottom:10px;color:#86b9ff;font-size:12px;font-weight:900;letter-spacing:.14em}
+.home-model-box{
+  min-height:150px;display:flex;flex-direction:column;align-items:center;justify-content:center;
+  text-align:center;border:1px solid #31517e;border-radius:18px;
+  background:linear-gradient(180deg,#1c3153,#13233d)
+}
+.home-model-box span{color:var(--muted);font-size:13px}
+.home-model-box strong{font-size:25px;margin:8px 0}
+.home-model-box small{color:#9bc3ff}
+.home-cards{display:grid;grid-template-columns:repeat(3,1fr);gap:18px}
+.home-card{display:flex;flex-direction:column;min-height:240px}
+.home-card p{flex:1;line-height:1.6}
+.home-icon{font-size:34px;margin-bottom:14px}
+.registry-card{margin-top:20px}
+@media(max-width:900px){
+  .home-hero{grid-template-columns:1fr}
+  .home-cards{grid-template-columns:1fr}
+}

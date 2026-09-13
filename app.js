@@ -1,25 +1,329 @@
-const CFG=window.POSTUREGUARD_CONFIG||{};
-const {createClient}=window.supabase;
-const supabase=createClient(CFG.SUPABASE_URL,CFG.SUPABASE_ANON_KEY);
-const CLASS_NAMES=['leaning_backward','leaning_left','leaning_right','upright'];
-const CORRECT_CLASS='upright',MIN_CONFIDENCE=.65,SMOOTHING_FRAMES=8,PREDICT_INTERVAL_MS=600;
-const MODEL_NAMES={cnn:'CNN',resnet50:'ResNet50',densenet121:'DenseNet121',efficientnetb0:'EfficientNet-B0'};
-const DISPLAY={leaning_backward:'Ngả về sau',leaning_left:'Nghiêng trái',leaning_right:'Nghiêng phải',upright:'Tư thế đúng',unknown:'Chưa xác định'};
-const $=id=>document.getElementById(id),sleep=ms=>new Promise(r=>setTimeout(r,ms));
-let currentUser=null,profile=null,systemConfig=null,adminToken=sessionStorage.getItem('pg_admin_token')||null;
-let model=null,activeModelCacheKey=null,stream=null,cameraRunning=false,predictLoopToken=0,history=[],badStartAt=null,localAlertSent=false,sessionId=null,currentEpisode=null,ratioChart=null,postureChart=null;
-function msg(el,kind,text){el.className=`message ${kind}`;el.textContent=text}
-async function userApi(path,options={}){const s=(await supabase.auth.getSession()).data.session;if(!s)throw new Error('Phiên đăng nhập đã hết hạn');const r=await fetch(`/.netlify/functions/${path}`,{...options,headers:{'Content-Type':'application/json',Authorization:`Bearer ${s.access_token}`,...(options.headers||{})}});const t=await r.text(),d=t?JSON.parse(t):{};if(!r.ok)throw new Error(d.error||`HTTP ${r.status}`);return d}
-async function adminApi(path,options={}){if(!adminToken)throw new Error('Chưa đăng nhập Super Admin');const r=await fetch(`/.netlify/functions/${path}`,{...options,headers:{'Content-Type':'application/json',Authorization:`Bearer ${adminToken}`,...(options.headers||{})}});const t=await r.text(),d=t?JSON.parse(t):{};if(!r.ok){if(r.status===401){adminToken=null;sessionStorage.removeItem('pg_admin_token')}throw new Error(d.error||`HTTP ${r.status}`)}return d}
-function showOnly(s){$('authScreen').hidden=s!=='auth';$('userApp').hidden=s!=='user';$('adminApp').hidden=s!=='admin'}
-function showAuthMode(m){$('loginForm').hidden=m!=='login';$('registerForm').hidden=m!=='register';$('adminLoginForm').hidden=m!=='admin';$('showLogin').classList.toggle('active',m==='login');$('showRegister').classList.toggle('active',m==='register');$('showAdminLogin').classList.toggle('active',m==='admin')}
-async function init(){if(adminToken){try{await loadAdminConsole();showOnly('admin');return}catch{adminToken=null;sessionStorage.removeItem('pg_admin_token')}}const {data:{session}}=await supabase.auth.getSession();if(session){await enterUserApp(session);return}showOnly('auth')}
-async function login(){const {error}=await supabase.auth.signInWithPassword({email:$('loginEmail').value.trim(),password:$('loginPassword').value});if(error)return msg($('authMessage'),'error',error.message);const {data:{session}}=await supabase.auth.getSession();await enterUserApp(session)}
-async function register(){const p1=$('registerPassword').value,p2=$('registerPassword2').value;if(p1!==p2)return msg($('authMessage'),'error','Mật khẩu xác nhận không khớp');const {data,error}=await supabase.auth.signUp({email:$('registerEmail').value.trim(),password:p1});if(error)return msg($('authMessage'),'error',error.message);if(data.session){await userApi('profile',{method:'POST',body:JSON.stringify({student_name:$('registerStudentName').value.trim(),parent_email:$('registerParentEmail').value.trim(),local_alert_seconds:10,email_enabled:true})});await enterUserApp(data.session)}else{msg($('authMessage'),'ok','Đăng ký thành công. Hãy xác nhận email rồi đăng nhập.');showAuthMode('login')}}
-async function adminLogin(){const r=await fetch('/.netlify/functions/admin-login',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({username:$('adminUsername').value.trim(),password:$('adminPassword').value})});const t=await r.text(),d=t?JSON.parse(t):{};if(!r.ok)return msg($('authMessage'),'error',d.error||'Đăng nhập admin thất bại');adminToken=d.token;sessionStorage.setItem('pg_admin_token',adminToken);await supabase.auth.signOut();await loadAdminConsole();showOnly('admin')}
-async function logoutUser(){if(cameraRunning)await stopCamera();await supabase.auth.signOut();currentUser=null;showOnly('auth');showAuthMode('login')}
-function logoutAdmin(){adminToken=null;sessionStorage.removeItem('pg_admin_token');showOnly('auth');showAuthMode('login')}
-async function enterUserApp(session){currentUser=session.user;$('userBadge').textContent=currentUser.email;await Promise.all([loadProfile(),loadPublicConfig()]);await loadSelectedModel(true);showOnly('user')}
+const CFG = window.POSTUREGUARD_CONFIG || {};
+const { createClient } = window.supabase;
+const supabase = createClient(CFG.SUPABASE_URL, CFG.SUPABASE_ANON_KEY);
+
+const CLASS_NAMES = ['leaning_backward','leaning_left','leaning_right','upright'];
+const CORRECT_CLASS = 'upright';
+const MIN_CONFIDENCE = 0.65;
+const SMOOTHING_FRAMES = 8;
+const PREDICT_INTERVAL_MS = 600;
+
+const MODEL_NAMES = {
+  cnn:'CNN',
+  resnet50:'ResNet50',
+  densenet121:'DenseNet121',
+  efficientnetb0:'EfficientNet-B0'
+};
+
+const DISPLAY = {
+  leaning_backward:'Ngả về sau',
+  leaning_left:'Nghiêng trái',
+  leaning_right:'Nghiêng phải',
+  upright:'Tư thế đúng',
+  unknown:'Chưa xác định'
+};
+
+const $ = id => document.getElementById(id);
+const sleep = ms => new Promise(r => setTimeout(r, ms));
+
+let currentUser = null;
+let profile = null;
+let systemConfig = null;
+let adminToken = sessionStorage.getItem('pg_admin_token') || null;
+
+let model = null;
+let activeModelCacheKey = null;
+let stream = null;
+let cameraRunning = false;
+let predictLoopToken = 0;
+let history = [];
+let badStartAt = null;
+let localAlertSent = false;
+let sessionId = null;
+let currentEpisode = null;
+let ratioChart = null;
+let postureChart = null;
+
+function msg(el, kind, text) {
+  if (!el) return;
+  el.hidden = false;
+  el.className = `message ${kind}`;
+  el.textContent = text;
+}
+
+function clearAuthMessage() {
+  const el = $('authMessage');
+  if (!el) return;
+  el.textContent = '';
+  el.hidden = true;
+}
+
+async function userApi(path, options = {}) {
+  const session = (await supabase.auth.getSession()).data.session;
+  if (!session) throw new Error('Phiên đăng nhập đã hết hạn');
+
+  const res = await fetch(`/.netlify/functions/${path}`, {
+    ...options,
+    headers: {
+      'Content-Type':'application/json',
+      Authorization:`Bearer ${session.access_token}`,
+      ...(options.headers || {})
+    }
+  });
+
+  const text = await res.text();
+  const data = text ? JSON.parse(text) : {};
+  if (!res.ok) throw new Error(data.error || `HTTP ${res.status}`);
+  return data;
+}
+
+async function adminApi(path, options = {}) {
+  if (!adminToken) throw new Error('Chưa đăng nhập Super Admin');
+
+  const res = await fetch(`/.netlify/functions/${path}`, {
+    ...options,
+    headers: {
+      'Content-Type':'application/json',
+      Authorization:`Bearer ${adminToken}`,
+      ...(options.headers || {})
+    }
+  });
+
+  const text = await res.text();
+  const data = text ? JSON.parse(text) : {};
+
+  if (!res.ok) {
+    if (res.status === 401) {
+      adminToken = null;
+      sessionStorage.removeItem('pg_admin_token');
+    }
+    throw new Error(data.error || `HTTP ${res.status}`);
+  }
+  return data;
+}
+
+function showOnly(screen) {
+  const auth = $('authScreen');
+  const user = $('userApp');
+  const admin = $('adminApp');
+
+  auth.hidden = screen !== 'auth';
+  user.hidden = screen !== 'user';
+  admin.hidden = screen !== 'admin';
+
+  // ép display để không bị CSS override thuộc tính hidden
+  auth.style.display = screen === 'auth' ? '' : 'none';
+  user.style.display = screen === 'user' ? '' : 'none';
+  admin.style.display = screen === 'admin' ? '' : 'none';
+
+  window.scrollTo(0, 0);
+}
+
+function showAuthMode(mode) {
+  $('loginForm').hidden = mode !== 'login';
+  $('registerForm').hidden = mode !== 'register';
+  $('showLogin').classList.toggle('active', mode === 'login');
+  $('showRegister').classList.toggle('active', mode === 'register');
+  clearAuthMessage();
+}
+
+function openUserTab(tab) {
+  document.querySelectorAll('[data-user-tab]').forEach(btn => {
+    btn.classList.toggle('active', btn.dataset.userTab === tab);
+  });
+
+  document.querySelectorAll('#userApp .panel').forEach(panel => {
+    panel.classList.remove('active');
+  });
+
+  const target = $(`user-tab-${tab}`);
+  if (target) target.classList.add('active');
+
+  if (tab === 'dashboard') loadDashboard();
+  window.scrollTo(0, 0);
+}
+
+function openAdminTab(tab) {
+  document.querySelectorAll('[data-admin-tab]').forEach(btn => {
+    btn.classList.toggle('active', btn.dataset.adminTab === tab);
+  });
+
+  document.querySelectorAll('#adminApp .panel').forEach(panel => {
+    panel.classList.remove('active');
+  });
+
+  const target = $(`admin-tab-${tab}`);
+  if (target) target.classList.add('active');
+
+  window.scrollTo(0, 0);
+}
+
+async function init() {
+  if (adminToken) {
+    try {
+      await loadAdminConsole();
+      showOnly('admin');
+      openAdminTab('models');
+      return;
+    } catch {
+      adminToken = null;
+      sessionStorage.removeItem('pg_admin_token');
+    }
+  }
+
+  const { data:{ session } } = await supabase.auth.getSession();
+
+  if (session) {
+    await enterUserApp(session);
+    return;
+  }
+
+  showOnly('auth');
+  showAuthMode('login');
+}
+
+/*
+ * Một form login duy nhất:
+ * - identity === "admin" => Netlify Super Admin
+ * - còn lại => Supabase email/password
+ */
+async function login() {
+  clearAuthMessage();
+
+  const identity = $('loginIdentity').value.trim();
+  const password = $('loginPassword').value;
+
+  if (!identity || !password) {
+    return msg($('authMessage'), 'error', 'Vui lòng nhập tài khoản và mật khẩu.');
+  }
+
+  if (identity.toLowerCase() === 'admin') {
+    return loginAdmin(identity, password);
+  }
+
+  const { error } = await supabase.auth.signInWithPassword({
+    email: identity,
+    password
+  });
+
+  if (error) return msg($('authMessage'), 'error', error.message);
+
+  const { data:{ session } } = await supabase.auth.getSession();
+  if (!session) return msg($('authMessage'), 'error', 'Không tạo được phiên đăng nhập.');
+
+  await enterUserApp(session);
+}
+
+async function loginAdmin(username, password) {
+  const res = await fetch('/.netlify/functions/admin-login', {
+    method:'POST',
+    headers:{'Content-Type':'application/json'},
+    body:JSON.stringify({username, password})
+  });
+
+  const text = await res.text();
+  const data = text ? JSON.parse(text) : {};
+
+  if (!res.ok) {
+    return msg($('authMessage'), 'error', data.error || 'Đăng nhập admin thất bại.');
+  }
+
+  adminToken = data.token;
+  sessionStorage.setItem('pg_admin_token', adminToken);
+
+  // tránh còn Supabase user session song song với admin
+  await supabase.auth.signOut();
+
+  await loadAdminConsole();
+  showOnly('admin');
+  openAdminTab('models');
+}
+
+async function register() {
+  clearAuthMessage();
+
+  const p1 = $('registerPassword').value;
+  const p2 = $('registerPassword2').value;
+
+  if (p1 !== p2) {
+    return msg($('authMessage'), 'error', 'Mật khẩu xác nhận không khớp.');
+  }
+
+  const { data, error } = await supabase.auth.signUp({
+    email:$('registerEmail').value.trim(),
+    password:p1
+  });
+
+  if (error) return msg($('authMessage'), 'error', error.message);
+
+  if (data.session) {
+    await userApi('profile', {
+      method:'POST',
+      body:JSON.stringify({
+        student_name:$('registerStudentName').value.trim(),
+        parent_email:$('registerParentEmail').value.trim(),
+        local_alert_seconds:10,
+        email_enabled:true
+      })
+    });
+
+    await enterUserApp(data.session);
+  } else {
+    msg($('authMessage'), 'ok', 'Đăng ký thành công. Hãy xác nhận email rồi đăng nhập.');
+    showAuthMode('login');
+  }
+}
+
+async function logoutUser() {
+  if (cameraRunning) await stopCamera();
+  await supabase.auth.signOut();
+  currentUser = null;
+  showOnly('auth');
+  showAuthMode('login');
+}
+
+function logoutAdmin() {
+  adminToken = null;
+  sessionStorage.removeItem('pg_admin_token');
+  showOnly('auth');
+  showAuthMode('login');
+}
+
+async function enterUserApp(session) {
+  currentUser = session.user;
+  $('userBadge').textContent = currentUser.email;
+
+  await Promise.all([
+    loadProfile(),
+    loadPublicConfig()
+  ]);
+
+  // Home hiển thị ngay cả khi chưa upload model.
+  $('homeStudentName').textContent =
+    profile?.student_name ||
+    currentUser.email?.split('@')[0] ||
+    'bạn';
+
+  $('homeModelName').textContent =
+    MODEL_NAMES[systemConfig?.selected_model] ||
+    systemConfig?.selected_model ||
+    'Chưa cấu hình';
+
+  $('homeModelVersion').textContent =
+    systemConfig?.model_version || '--';
+
+  showOnly('user');
+  openUserTab('home');
+
+  // Load model sau khi UI đã chuyển sang Home.
+  // Nếu model chưa có, user vẫn dùng được Dashboard/Cài đặt.
+  try {
+    await loadSelectedModel(true);
+  } catch (e) {
+    console.error('Model load error:', e);
+  }
+}
+
 async function loadProfile(){profile=await userApi('profile',{method:'GET'});$('studentName').value=profile.student_name||'';$('parentEmail').value=profile.parent_email||'';$('localAlertSeconds').value=profile.local_alert_seconds||10;$('emailEnabled').checked=profile.email_enabled!==false}
 async function saveSettings(){const next={student_name:$('studentName').value.trim(),parent_email:$('parentEmail').value.trim(),local_alert_seconds:Number($('localAlertSeconds').value||10),email_enabled:$('emailEnabled').checked};try{await userApi('profile',{method:'POST',body:JSON.stringify(next)});profile=next;msg($('settingsMessage'),'ok','Đã lưu cài đặt cá nhân.')}catch(e){msg($('settingsMessage'),'error',e.message)}}
 async function loadPublicConfig(){systemConfig=await userApi('public-config',{method:'GET'})}
@@ -44,16 +348,49 @@ async function uploadModel(){const key=$('uploadModelKey').value,version=$('uplo
 async function loadModelRegistry(){const d=await adminApi('model-registry',{method:'GET'}),rows=d.items||[];$('modelRegistryRows').innerHTML=rows.length?rows.map(x=>`<tr><td>${MODEL_NAMES[x.model_key]||x.model_key}</td><td>${x.model_version}</td><td>${new Date(x.uploaded_at).toLocaleString('vi-VN')}</td><td class="mono-cell">${x.model_url}</td></tr>`).join(''):'<tr><td colspan="4">Chưa có model</td></tr>'}
 async function loadEmailStatus(){const s=await adminApi('admin-email-status',{method:'GET'});$('systemEmailSender').textContent=s.sender||'Chưa cấu hình';$('systemEmailStatus').textContent=s.configured?'Đã cấu hình':'Chưa cấu hình'}
 async function adminTestEmail(){try{msg($('adminEmailMessage'),'info','Đang gửi…');await adminApi('admin-email-status',{method:'POST',body:JSON.stringify({to:$('adminTestRecipient').value.trim()})});msg($('adminEmailMessage'),'ok','Đã gửi email test.')}catch(e){msg($('adminEmailMessage'),'error',e.message)}}
-document.querySelectorAll('[data-user-tab]').forEach(btn=>btn.addEventListener('click',()=>{
-  openUserTab(btn.dataset.userTab);
-}));
-document.querySelectorAll('[data-admin-tab]').forEach(btn=>btn.addEventListener('click',()=>{document.querySelectorAll('[data-admin-tab]').forEach(x=>x.classList.remove('active'));document.querySelectorAll('#adminApp .panel').forEach(x=>x.classList.remove('active'));btn.classList.add('active');$(`admin-tab-${btn.dataset.adminTab}`).classList.add('active')}));
-$('showLogin').onclick=()=>showAuthMode('login');$('showRegister').onclick=()=>showAuthMode('register');$('showAdminLogin').onclick=()=>showAuthMode('admin');$('loginBtn').onclick=login;$('registerBtn').onclick=register;$('adminLoginBtn').onclick=adminLogin;$('logoutBtn').onclick=logoutUser;$('adminLogoutBtn').onclick=logoutAdmin;$('startCamera').onclick=startCamera;$('stopCamera').onclick=stopCamera;$('saveSettings').onclick=saveSettings;$('refreshDashboard').onclick=loadDashboard;$('saveSystemConfig').onclick=saveAdminConfig;$('uploadModelBtn').onclick=uploadModel;$('adminTestEmailBtn').onclick=adminTestEmail;
 
-$('homeStartCamera').onclick=()=>openUserTab('camera');
-$('homeOpenDashboard').onclick=()=>openUserTab('dashboard');
-document.querySelectorAll('.home-nav').forEach(btn=>{
-  btn.addEventListener('click',()=>openUserTab(btn.dataset.target));
+
+/* ---------- EVENT BINDINGS ---------- */
+
+document.querySelectorAll('[data-user-tab]').forEach(btn => {
+  btn.addEventListener('click', () => openUserTab(btn.dataset.userTab));
 });
 
-init();
+document.querySelectorAll('[data-admin-tab]').forEach(btn => {
+  btn.addEventListener('click', () => openAdminTab(btn.dataset.adminTab));
+});
+
+document.querySelectorAll('.home-nav').forEach(btn => {
+  btn.addEventListener('click', () => openUserTab(btn.dataset.target));
+});
+
+$('showLogin').addEventListener('click', () => showAuthMode('login'));
+$('showRegister').addEventListener('click', () => showAuthMode('register'));
+
+$('loginBtn').addEventListener('click', login);
+$('registerBtn').addEventListener('click', register);
+
+$('loginPassword').addEventListener('keydown', e => {
+  if (e.key === 'Enter') login();
+});
+
+$('logoutBtn').addEventListener('click', logoutUser);
+$('adminLogoutBtn').addEventListener('click', logoutAdmin);
+
+$('homeStartCamera').addEventListener('click', () => openUserTab('camera'));
+$('homeOpenDashboard').addEventListener('click', () => openUserTab('dashboard'));
+
+$('startCamera').addEventListener('click', startCamera);
+$('stopCamera').addEventListener('click', stopCamera);
+$('saveSettings').addEventListener('click', saveSettings);
+$('refreshDashboard').addEventListener('click', loadDashboard);
+
+$('saveSystemConfig').addEventListener('click', saveAdminConfig);
+$('uploadModelBtn').addEventListener('click', uploadModel);
+$('adminTestEmailBtn').addEventListener('click', adminTestEmail);
+
+init().catch(err => {
+  console.error(err);
+  showOnly('auth');
+  msg($('authMessage'), 'error', `Khởi tạo ứng dụng lỗi: ${err.message}`);
+});
