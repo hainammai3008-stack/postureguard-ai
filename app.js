@@ -44,7 +44,16 @@ async function uploadModel(){const key=$('uploadModelKey').value,version=$('uplo
 async function loadModelRegistry(){const d=await adminApi('model-registry',{method:'GET'}),rows=d.items||[];$('modelRegistryRows').innerHTML=rows.length?rows.map(x=>`<tr><td>${MODEL_NAMES[x.model_key]||x.model_key}</td><td>${x.model_version}</td><td>${new Date(x.uploaded_at).toLocaleString('vi-VN')}</td><td class="mono-cell">${x.model_url}</td></tr>`).join(''):'<tr><td colspan="4">Chưa có model</td></tr>'}
 async function loadEmailStatus(){const s=await adminApi('admin-email-status',{method:'GET'});$('systemEmailSender').textContent=s.sender||'Chưa cấu hình';$('systemEmailStatus').textContent=s.configured?'Đã cấu hình':'Chưa cấu hình'}
 async function adminTestEmail(){try{msg($('adminEmailMessage'),'info','Đang gửi…');await adminApi('admin-email-status',{method:'POST',body:JSON.stringify({to:$('adminTestRecipient').value.trim()})});msg($('adminEmailMessage'),'ok','Đã gửi email test.')}catch(e){msg($('adminEmailMessage'),'error',e.message)}}
-document.querySelectorAll('[data-user-tab]').forEach(btn=>btn.addEventListener('click',()=>{document.querySelectorAll('[data-user-tab]').forEach(x=>x.classList.remove('active'));document.querySelectorAll('#userApp .panel').forEach(x=>x.classList.remove('active'));btn.classList.add('active');$(`user-tab-${btn.dataset.userTab}`).classList.add('active');if(btn.dataset.userTab==='dashboard')loadDashboard()}));
+document.querySelectorAll('[data-user-tab]').forEach(btn=>btn.addEventListener('click',()=>{
+  openUserTab(btn.dataset.userTab);
+}));
 document.querySelectorAll('[data-admin-tab]').forEach(btn=>btn.addEventListener('click',()=>{document.querySelectorAll('[data-admin-tab]').forEach(x=>x.classList.remove('active'));document.querySelectorAll('#adminApp .panel').forEach(x=>x.classList.remove('active'));btn.classList.add('active');$(`admin-tab-${btn.dataset.adminTab}`).classList.add('active')}));
 $('showLogin').onclick=()=>showAuthMode('login');$('showRegister').onclick=()=>showAuthMode('register');$('showAdminLogin').onclick=()=>showAuthMode('admin');$('loginBtn').onclick=login;$('registerBtn').onclick=register;$('adminLoginBtn').onclick=adminLogin;$('logoutBtn').onclick=logoutUser;$('adminLogoutBtn').onclick=logoutAdmin;$('startCamera').onclick=startCamera;$('stopCamera').onclick=stopCamera;$('saveSettings').onclick=saveSettings;$('refreshDashboard').onclick=loadDashboard;$('saveSystemConfig').onclick=saveAdminConfig;$('uploadModelBtn').onclick=uploadModel;$('adminTestEmailBtn').onclick=adminTestEmail;
+
+$('homeStartCamera').onclick=()=>openUserTab('camera');
+$('homeOpenDashboard').onclick=()=>openUserTab('dashboard');
+document.querySelectorAll('.home-nav').forEach(btn=>{
+  btn.addEventListener('click',()=>openUserTab(btn.dataset.target));
+});
+
 init();
