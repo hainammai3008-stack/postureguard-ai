@@ -1,132 +1,154 @@
-# PostureGuard AI v2
+# PostureGuard AI v4 — Dynamic AI Model
 
-Bản này mở rộng project theo 3 yêu cầu:
-
-1. **User đăng ký / đăng nhập đơn giản** bằng Supabase Auth (email + password).
-2. **Mỗi user có cấu hình riêng**:
-   - tên học sinh
-   - email phụ huynh
-   - model AI đang dùng
-   - thời gian cảnh báo tại chỗ
-   - thời gian gửi email
-   - bật/tắt email
-3. **Chọn 1 trong 4 model**:
-   - CNN
-   - ResNet50
-   - DenseNet121
-   - EfficientNet-B0
+Phiên bản này bổ sung khả năng **upload/activate model động mà không restart hoặc redeploy Netlify**.
 
 ## Kiến trúc
 
 ```text
-Browser / Netlify
-├── Supabase Auth
-├── TensorFlow.js
-│   ├── CNN
-│   ├── ResNet50
-│   ├── DenseNet121
-│   └── EfficientNet-B0
-├── Camera / Upload
-└── Dashboard
-       │
-       └── Netlify Functions
-             ├── Supabase DB
-             └── Gmail -> email phụ huynh
+Admin/System Config
+        │
+        ├── Upload model.json + *.bin
+        ▼
+Supabase Storage
+ai-models/
+├── cnn/v1/
+├── cnn/v2/
+├── resnet50/v1/
+├── densenet121/v1/
+└── efficientnetb0/v3/
+        │
+        ▼
+model_registry
+        │
+        ▼
+system_config
+(selected_model, version, URL)
+        │
+        ▼
+Browser
+tf.loadGraphModel(model_url)
 ```
 
-## Kiến trúc v3
+## Chức năng hiện có
+
+- Supabase Auth: đăng ký/đăng nhập.
+- Cấu hình riêng từng user:
+  - tên học sinh
+  - email phụ huynh
+  - ngưỡng cảnh báo âm thanh
+  - bật/tắt báo cáo email
+- Model AI là cấu hình chung toàn hệ thống.
+- Upload model động lên Supabase Storage.
+- Activate model/version mới không redeploy.
+- Browser tự `dispose()` model cũ và load model mới.
+- Camera TensorFlow.js.
+- Upload ảnh.
+- Cảnh báo âm thanh khi ngồi sai vượt ngưỡng.
+- Email phụ huynh là báo cáo tổng hợp khi kết thúc phiên.
+- Dashboard theo user.
+
+## 1. Supabase
+
+Chạy:
 
 ```text
-CẤU HÌNH HỆ THỐNG
-└── Chọn 1 model AI dùng chung
-    ├── CNN
-    ├── ResNet50
-    ├── DenseNet121
-    └── EfficientNet-B0
-
-USER
-├── Đăng ký / đăng nhập
-├── Tên học sinh
-├── Email phụ huynh
-├── Ngưỡng cảnh báo âm thanh
-└── Bật/tắt báo cáo email
-
-CAMERA
-↓
-AI phát hiện tư thế
-↓
-Sai quá ngưỡng
-→ cảnh báo âm thanh ngay cho học sinh
-↓
-Kết thúc phiên học
-→ tổng hợp dữ liệu
-→ gửi email báo cáo phụ huynh
+supabase/schema.sql
 ```
 
-## Email phụ huynh
+Schema tạo:
 
-Email không còn được gửi ngay khi học sinh ngồi sai quá lâu.
-
-Thay vào đó:
-- ngồi sai quá ngưỡng → **chỉ cảnh báo bằng âm thanh**;
-- khi kết thúc phiên → hệ thống tính:
-  - thời gian theo dõi;
-  - tỷ lệ ngồi đúng;
-  - tổng thời gian ngồi sai;
-  - tư thế sai nhiều nhất;
-  - chi tiết thời gian từng loại;
-  - model AI đang sử dụng;
-- sau đó gửi **một báo cáo tổng hợp** tới email phụ huynh.
-
-## Cấu hình model
-
-Model được lưu trong `system_config`, là cấu hình chung cho toàn hệ thống.
-
-User không được chọn model trong phần hồ sơ cá nhân.
-
-## Supabase
-
-Chạy `supabase/schema.sql`.
-
-Bảng chính:
 - `user_profiles`
 - `system_config`
+- `model_registry`
 - `monitor_sessions`
 - `posture_events`
 - `alerts`
 - `reports`
+- Storage bucket public `ai-models`
 
-## Netlify variables
-
-```text
-SUPABASE_URL
-SUPABASE_URL_PUBLIC
-SUPABASE_ANON_KEY
-SUPABASE_SERVICE_ROLE_KEY
-GMAIL_USER
-GMAIL_APP_PASSWORD
-```
-
-## Model files
+## 2. Netlify Environment Variables
 
 ```text
-models/
-├── cnn/
-├── resnet50/
-├── densenet121/
-└── efficientnetb0/
+SUPABASE_URL=https://xxxx.supabase.co
+SUPABASE_URL_PUBLIC=https://xxxx.supabase.co
+SUPABASE_ANON_KEY=...
+SUPABASE_SERVICE_ROLE_KEY=...
+SUPABASE_MODEL_BUCKET=ai-models
+GMAIL_USER=postureguard.demo@gmail.com
+GMAIL_APP_PASSWORD=xxxxxxxxxxxxxxxx
 ```
 
-Mỗi folder gồm `model.json` + `*.bin`.
+## 3. Upload model động
 
-## Luồng demo nên trình bày
+Trong web:
 
-1. Đăng nhập user.
-2. Cấu hình email phụ huynh + ngưỡng cảnh báo.
-3. Ở tab Cấu hình hệ thống, chọn model AI.
-4. Bật camera.
-5. Ngồi sai quá ngưỡng → nghe cảnh báo bằng giọng nói.
-6. Tiếp tục phiên học.
-7. Tắt camera.
-8. Hệ thống gửi email báo cáo tổng hợp cho phụ huynh.
-9. Mở Dashboard để xem lịch sử.
+```text
+Cấu hình hệ thống
+→ Upload model mới
+→ chọn loại model
+→ nhập version
+→ chọn model.json
+→ chọn tất cả *.bin
+→ Upload
+```
+
+Nếu bật **Activate ngay sau khi upload**:
+
+1. files được upload vào Supabase Storage;
+2. `model_registry` được cập nhật;
+3. `system_config` trỏ sang version mới;
+4. browser dispose model cũ;
+5. `tf.loadGraphModel()` load model mới.
+
+Không restart app và không redeploy Netlify.
+
+## 4. Quy ước model
+
+Mỗi model/version phải có:
+
+```text
+model.json
+group1-shard1ofN.bin
+...
+```
+
+Cả 4 model phải thống nhất:
+
+```text
+Input: 224 x 224 x 3
+Output classes:
+0 leaning_backward
+1 leaning_left
+2 leaning_right
+3 upright
+```
+
+Khuyến nghị đưa preprocessing vào trong graph trước khi export để frontend luôn gửi RGB float 0..255.
+
+## 5. Rollback
+
+Ví dụ active hiện tại:
+
+```text
+efficientnetb0 / v3
+```
+
+Muốn rollback:
+
+```text
+Model: EfficientNet-B0
+Version: v2
+→ Activate model/version
+```
+
+Frontend sẽ load lại v2 ngay.
+
+## 6. Lưu ý upload lớn
+
+TF.js model có thể có nhiều file weights lớn. Netlify Functions có giới hạn kích thước request tùy plan/runtime.
+
+Nếu model lớn, hướng production tốt hơn là:
+- browser upload trực tiếp lên Supabase Storage bằng signed upload URL;
+- Netlify Function chỉ tạo signed URL và activate version.
+
+Bản v4 hiện tại dùng multipart upload qua Function để demo đơn giản.

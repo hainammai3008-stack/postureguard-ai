@@ -5,6 +5,7 @@
   "type": "module",
   "dependencies": {
     "@supabase/supabase-js": "^2.57.4",
-    "nodemailer": "^7.0.6"
+    "nodemailer": "^7.0.6",
+    "busboy": "^1.6.0"
   }
 }

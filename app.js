@@ -8,11 +8,11 @@ const MIN_CONFIDENCE = 0.65;
 const SMOOTHING_FRAMES = 8;
 const PREDICT_INTERVAL_MS = 600;
 
-const MODEL_CONFIGS = {
-  cnn:            { name:'CNN',             url:'/models/cnn/model.json',            loader:'graph' },
-  resnet50:       { name:'ResNet50',        url:'/models/resnet50/model.json',       loader:'graph' },
-  densenet121:    { name:'DenseNet121',     url:'/models/densenet121/model.json',    loader:'graph' },
-  efficientnetb0: { name:'EfficientNet-B0', url:'/models/efficientnetb0/model.json', loader:'graph' }
+const MODEL_NAMES = {
+  cnn:'CNN',
+  resnet50:'ResNet50',
+  densenet121:'DenseNet121',
+  efficientnetb0:'EfficientNet-B0'
 };
 
 const DISPLAY = {
@@ -118,41 +118,113 @@ async function saveSettings(){
 
 async function loadSystemConfig(){
   try{ systemConfig=await api('system-config',{method:'GET'}); }
-  catch{ systemConfig={selected_model:'cnn'}; }
+  catch{ systemConfig={selected_model:'cnn',model_version:'v1',model_url:''}; }
+
   $('globalModel').value=systemConfig.selected_model||'cnn';
-  $('globalModelDisplay').textContent=MODEL_CONFIGS[systemConfig.selected_model]?.name||systemConfig.selected_model;
+  $('globalModelVersion').value=systemConfig.model_version||'v1';
+  $('globalModelDisplay').textContent=`${MODEL_NAMES[systemConfig.selected_model]||systemConfig.selected_model} ${systemConfig.model_version||''}`;
+  $('globalModelUrl').textContent=systemConfig.model_url||'--';
 }
 
 async function saveSystemConfig(){
   try{
     const selected_model=$('globalModel').value;
-    await api('system-config',{method:'POST',body:JSON.stringify({selected_model})});
-    systemConfig={selected_model};
-    $('globalModelDisplay').textContent=MODEL_CONFIGS[selected_model].name;
-    msg($('systemMessage'),'ok','Đã lưu model AI dùng chung.');
+    const model_version=$('globalModelVersion').value.trim()||'v1';
+    const data=await api('system-config',{method:'POST',body:JSON.stringify({selected_model,model_version})});
+    systemConfig=data.config;
+    $('globalModelDisplay').textContent=`${MODEL_NAMES[selected_model]} ${model_version}`;
+    $('globalModelUrl').textContent=systemConfig.model_url||'--';
+    msg($('systemMessage'),'ok','Đã activate model/version mới.');
     await loadSelectedModel(true);
   }catch(e){ msg($('systemMessage'),'error',e.message); }
 }
 
 async function loadSelectedModel(force=false){
   const key=systemConfig?.selected_model||'cnn';
-  if(!force && model && activeModelKey===key) return;
-  const cfg=MODEL_CONFIGS[key];
-  $('modelBadge').textContent=`Đang tải ${cfg.name}…`;
+  const version=systemConfig?.model_version||'v1';
+  const url=systemConfig?.model_url;
+
+  if(!url){
+    $('modelBadge').textContent='Chưa cấu hình model URL';
+    $('modelBadge').className='badge badge-bad';
+    return;
+  }
+
+  const cacheKey=`${key}:${version}:${url}`;
+  if(!force && model && activeModelKey===cacheKey) return;
+
+  $('modelBadge').textContent=`Đang tải ${MODEL_NAMES[key]} ${version}…`;
   $('modelBadge').className='badge badge-warn';
+
   if(model&&model.dispose) model.dispose();
   model=null;
+
   try{
-    model=cfg.loader==='layers'?await tf.loadLayersModel(cfg.url):await tf.loadGraphModel(cfg.url);
-    activeModelKey=key;
-    $('modelBadge').textContent=`${cfg.name} sẵn sàng`;
+    // cache-bust theo version + timestamp cập nhật
+    const sep=url.includes('?')?'&':'?';
+    const dynamicUrl=`${url}${sep}v=${encodeURIComponent(version)}&t=${encodeURIComponent(systemConfig.updated_at||Date.now())}`;
+
+    model=await tf.loadGraphModel(dynamicUrl);
+    activeModelKey=cacheKey;
+
+    $('modelBadge').textContent=`${MODEL_NAMES[key]} ${version} sẵn sàng`;
     $('modelBadge').className='badge badge-ok';
-    $('activeModelName').textContent=cfg.name;
+    $('activeModelName').textContent=`${MODEL_NAMES[key]} ${version}`;
   }catch(e){
     console.error(e);
-    $('modelBadge').textContent=`Thiếu model ${cfg.name}`;
+    $('modelBadge').textContent=`Lỗi load ${MODEL_NAMES[key]} ${version}`;
     $('modelBadge').className='badge badge-bad';
-    $('activeModelName').textContent=cfg.name;
+    $('activeModelName').textContent=`${MODEL_NAMES[key]} ${version}`;
+  }
+}
+
+async function uploadModelFiles(){
+  const key=$('uploadModelKey').value;
+  const version=$('uploadModelVersion').value.trim();
+  const jsonFile=$('modelJsonFile').files[0];
+  const binFiles=Array.from($('modelBinFiles').files||[]);
+  const activate=$('activateAfterUpload').checked;
+
+  if(!version) return msg($('uploadModelMessage'),'error','Hãy nhập version.');
+  if(!jsonFile) return msg($('uploadModelMessage'),'error','Thiếu model.json.');
+  if(!binFiles.length) return msg($('uploadModelMessage'),'error','Thiếu file weights *.bin.');
+
+  try{
+    msg($('uploadModelMessage'),'info','Đang chuẩn bị upload…');
+
+    const form=new FormData();
+    form.append('model_key',key);
+    form.append('model_version',version);
+    form.append('activate',activate?'true':'false');
+    form.append('model_json',jsonFile);
+    binFiles.forEach(f=>form.append('weight_files',f));
+
+    const session=(await supabase.auth.getSession()).data.session;
+    if(!session) throw new Error('Phiên đăng nhập đã hết hạn');
+
+    const res=await fetch('/.netlify/functions/upload-model',{
+      method:'POST',
+      headers:{Authorization:`Bearer ${session.access_token}`},
+      body:form
+    });
+
+    const text=await res.text();
+    const data=text?JSON.parse(text):{};
+    if(!res.ok) throw new Error(data.error||`HTTP ${res.status}`);
+
+    msg($('uploadModelMessage'),'ok',`Upload thành công: ${MODEL_NAMES[key]} ${version}`);
+
+    if(activate){
+      systemConfig=data.config;
+      $('globalModel').value=systemConfig.selected_model;
+      $('globalModelVersion').value=systemConfig.model_version;
+      $('globalModelDisplay').textContent=`${MODEL_NAMES[systemConfig.selected_model]} ${systemConfig.model_version}`;
+      $('globalModelUrl').textContent=systemConfig.model_url;
+      await loadSelectedModel(true);
+    }
+  }catch(e){
+    console.error(e);
+    msg($('uploadModelMessage'),'error',e.message);
   }
 }
 
@@ -189,7 +261,7 @@ async function startCamera(){
   $('video').srcObject=stream;
   cameraRunning=true; history=[]; badStartAt=null; localAlertSent=false; currentEpisode=null;
   sessionId=crypto.randomUUID();
-  await api('session',{method:'POST',body:JSON.stringify({action:'start',session_id:sessionId,model_key:activeModelKey})});
+  await api('session',{method:'POST',body:JSON.stringify({action:'start',session_id:sessionId,model_key:systemConfig?.selected_model||'cnn'})});
   $('startCamera').disabled=true; $('stopCamera').disabled=false;
   const token=++predictLoopToken; predictLoop(token);
 }
@@ -260,7 +332,7 @@ async function handlePosture(label,confidence){
     $('localAlertState').textContent='Đã cảnh báo';
     speak(`Bạn đang ${DISPLAY[label].toLowerCase()}. Hãy điều chỉnh lại tư thế ngồi.`);
     await api('alert-log',{method:'POST',body:JSON.stringify({
-      session_id:sessionId,posture:label,duration_seconds:Math.round(seconds),model_key:activeModelKey,channel:'audio'
+      session_id:sessionId,posture:label,duration_seconds:Math.round(seconds),model_key:systemConfig?.selected_model||'cnn',channel:'audio'
     })});
   }
 }
@@ -272,7 +344,7 @@ async function closeEpisode(endedAt){
     session_id:sessionId,posture:ep.label,confidence:ep.maxConfidence,
     started_at:new Date(ep.startedAt).toISOString(),
     duration_seconds:Math.max(1,Math.round((endedAt-ep.startedAt)/1000)),
-    model_key:activeModelKey
+    model_key:systemConfig?.selected_model||'cnn'
   })});
 }
 
@@ -323,7 +395,7 @@ function renderCharts(monitored,bad,byPosture){
 }
 
 function renderAlerts(rows){
-  $('alertRows').innerHTML=rows.length?rows.map(a=>`<tr><td>${new Date(a.sent_at).toLocaleString('vi-VN')}</td><td>${DISPLAY[a.posture]||a.posture}</td><td>${a.duration_seconds}s</td><td>${MODEL_CONFIGS[a.model_key]?.name||a.model_key||''}</td><td>${a.channel}</td></tr>`).join(''):'<tr><td colspan="5">Chưa có cảnh báo</td></tr>';
+  $('alertRows').innerHTML=rows.length?rows.map(a=>`<tr><td>${new Date(a.sent_at).toLocaleString('vi-VN')}</td><td>${DISPLAY[a.posture]||a.posture}</td><td>${a.duration_seconds}s</td><td>${MODEL_NAMES[a.model_key]||a.model_key||''}</td><td>${a.channel}</td></tr>`).join(''):'<tr><td colspan="5">Chưa có cảnh báo</td></tr>';
 }
 
 function setupTabs(){
@@ -342,5 +414,7 @@ $('startCamera').onclick=startCamera; $('stopCamera').onclick=stopCamera;
 $('imageInput').onchange=e=>e.target.files[0]&&handleUpload(e.target.files[0]);
 $('saveSettings').onclick=saveSettings; $('testEmail').onclick=testEmail; $('refreshDashboard').onclick=loadDashboard;
 $('saveSystemConfig').onclick=saveSystemConfig;
+$('reloadModelNow').onclick=()=>loadSelectedModel(true);
+$('uploadModelBtn').onclick=uploadModelFiles;
 
 setupTabs(); initAuth();

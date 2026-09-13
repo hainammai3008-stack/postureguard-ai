@@ -166,26 +166,62 @@
       </section>
 
       <section id="tab-system" class="panel">
-        <div class="card settings-card">
-          <h2>Cấu hình hệ thống AI</h2>
-          <p class="hint">Model AI là cấu hình chung của toàn hệ thống, không phụ thuộc từng user.</p>
+        <div class="grid two">
+          <div class="card settings-card">
+            <h2>Cấu hình hệ thống AI</h2>
+            <p class="hint">Model AI là cấu hình chung toàn hệ thống. Có thể chuyển model động mà không restart/redeploy app.</p>
 
-          <label>Model AI đang sử dụng
-            <select id="globalModel">
-              <option value="cnn">CNN</option>
-              <option value="resnet50">ResNet50</option>
-              <option value="densenet121">DenseNet121</option>
-              <option value="efficientnetb0">EfficientNet-B0</option>
-            </select>
-          </label>
+            <label>Model đang active
+              <select id="globalModel">
+                <option value="cnn">CNN</option>
+                <option value="resnet50">ResNet50</option>
+                <option value="densenet121">DenseNet121</option>
+                <option value="efficientnetb0">EfficientNet-B0</option>
+              </select>
+            </label>
 
-          <div class="metric-row"><span>Model hiện tại</span><strong id="globalModelDisplay">--</strong></div>
+            <label>Version đang active<input id="globalModelVersion" value="v1" /></label>
 
-          <div class="actions">
-            <button id="saveSystemConfig" class="primary">Lưu cấu hình hệ thống</button>
+            <div class="metric-row"><span>Model hiện tại</span><strong id="globalModelDisplay">--</strong></div>
+            <div class="metric-row"><span>Model URL</span><strong id="globalModelUrl" class="mono-small">--</strong></div>
+
+            <div class="actions">
+              <button id="saveSystemConfig" class="primary">Activate model/version</button>
+              <button id="reloadModelNow" class="secondary">Reload model ngay</button>
+            </div>
+
+            <div id="systemMessage" class="message info">
+              Model được load từ Supabase Storage. Đổi version sẽ reload model động trên trình duyệt.
+            </div>
           </div>
-          <div id="systemMessage" class="message info">
-            Khi đổi model, tất cả user sẽ sử dụng model mới trong lần chạy tiếp theo.
+
+          <div class="card settings-card">
+            <h2>Upload model mới</h2>
+            <p class="hint">Upload model.json và toàn bộ file *.bin của TensorFlow.js GraphModel lên Supabase Storage.</p>
+
+            <label>Loại model
+              <select id="uploadModelKey">
+                <option value="cnn">CNN</option>
+                <option value="resnet50">ResNet50</option>
+                <option value="densenet121">DenseNet121</option>
+                <option value="efficientnetb0">EfficientNet-B0</option>
+              </select>
+            </label>
+
+            <label>Version<input id="uploadModelVersion" value="v1" /></label>
+
+            <label>Chọn model.json<input id="modelJsonFile" type="file" accept=".json,application/json" /></label>
+            <label>Chọn weight files (*.bin)<input id="modelBinFiles" type="file" accept=".bin,application/octet-stream" multiple /></label>
+
+            <label class="check"><input id="activateAfterUpload" type="checkbox" checked /> Activate ngay sau khi upload</label>
+
+            <div class="actions">
+              <button id="uploadModelBtn" class="primary">Upload model</button>
+            </div>
+
+            <div id="uploadModelMessage" class="message info">
+              Upload không cần restart app. Nếu activate, client sẽ reload model mới.
+            </div>
           </div>
         </div>
       </section>
