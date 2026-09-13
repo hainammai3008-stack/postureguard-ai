@@ -1,14 +1,4 @@
 import {requireUser,json,parseBody,isUuid} from './_shared.mjs';
 export async function handler(event){
-  try{
-    const {user,db}=await requireUser(event);
-    if(event.httpMethod!=='POST') return json(405,{error:'Method not allowed'});
-    const b=parseBody(event); if(!isUuid(b.session_id)) return json(400,{error:'session_id không hợp lệ'});
-    if(b.action==='start'){
-      const {error}=await db.from('monitor_sessions').insert({id:b.session_id,user_id:user.id,model_key:b.model_key||'cnn',started_at:new Date().toISOString()}); if(error) throw error;
-    }else if(b.action==='stop'){
-      const {error}=await db.from('monitor_sessions').update({ended_at:new Date().toISOString()}).eq('id',b.session_id).eq('user_id',user.id); if(error) throw error;
-    }else return json(400,{error:'action không hợp lệ'});
-    return json(200,{ok:true});
-  }catch(e){return json(e.statusCode||500,{error:e.message})}
+  try{const {user,db}=await requireUser(event);if(event.httpMethod!=='POST')return json(405,{error:'Method not allowed'});const b=parseBody(event);if(!isUuid(b.session_id))return json(400,{error:'session_id không hợp lệ'});if(b.action==='start'){const {error}=await db.from('monitor_sessions').insert({id:b.session_id,user_id:user.id,model_key:b.model_key||'cnn',started_at:new Date().toISOString()});if(error)throw error}else if(b.action==='stop'){const {error}=await db.from('monitor_sessions').update({ended_at:new Date().toISOString()}).eq('id',b.session_id).eq('user_id',user.id);if(error)throw error}else return json(400,{error:'action không hợp lệ'});return json(200,{ok:true})}catch(e){return json(e.statusCode||500,{error:e.message})}
 }

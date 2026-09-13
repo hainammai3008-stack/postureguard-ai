@@ -5,10 +5,3 @@
 
 [functions]
   node_bundler = "esbuild"
-
-[[headers]]
-  for = "/models/*"
-  [headers.values]
-    Cache-Control = "public, max-age=3600"
-
-# Dynamic TF.js models are loaded from Supabase Storage, not bundled in deploy.

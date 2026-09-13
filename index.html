@@ -4,236 +4,144 @@
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>PostureGuard AI</title>
-  <meta name="description" content="AI giám sát và cảnh báo tư thế ngồi học" />
   <link rel="stylesheet" href="/styles.css" />
   <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs@4.22.0/dist/tf.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.6/dist/chart.umd.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 </head>
 <body>
-  <div id="authScreen" class="auth-screen">
-    <div class="auth-card">
-      <h1>PostureGuard AI</h1>
-      <p>Đăng nhập để sử dụng camera, dashboard và cấu hình cảnh báo riêng cho từng học sinh.</p>
-      <div class="auth-tabs">
-        <button id="showLogin" class="tab active">Đăng nhập</button>
-        <button id="showRegister" class="tab">Đăng ký</button>
-      </div>
-      <div id="loginForm">
-        <label>Email<input id="loginEmail" type="email" placeholder="student@example.com" /></label>
-        <label>Mật khẩu<input id="loginPassword" type="password" minlength="6" /></label>
-        <button id="loginBtn" class="primary full">Đăng nhập</button>
-      </div>
-      <div id="registerForm" hidden>
-        <label>Email<input id="registerEmail" type="email" placeholder="student@example.com" /></label>
-        <label>Mật khẩu<input id="registerPassword" type="password" minlength="6" /></label>
-        <label>Tên học sinh<input id="registerStudentName" placeholder="Mai Hải Nam" /></label>
-        <label>Email phụ huynh<input id="registerParentEmail" type="email" placeholder="parent@gmail.com" /></label>
-        <button id="registerBtn" class="primary full">Tạo tài khoản</button>
-      </div>
-      <div id="authMessage" class="message info">Mỗi tài khoản có cấu hình model, email phụ huynh và dữ liệu dashboard riêng.</div>
+<section id="authScreen" class="auth-screen">
+  <div class="auth-card">
+    <div class="brand"><h1>PostureGuard AI</h1><p>AI giám sát và cảnh báo tư thế ngồi học</p></div>
+    <div class="auth-tabs">
+      <button id="showLogin" class="tab active">Đăng nhập</button>
+      <button id="showRegister" class="tab">Đăng ký</button>
+      <button id="showAdminLogin" class="tab">Super Admin</button>
     </div>
+    <div id="loginForm">
+      <label>Email<input id="loginEmail" type="email" /></label>
+      <label>Mật khẩu<input id="loginPassword" type="password" minlength="6" /></label>
+      <button id="loginBtn" class="primary full">Đăng nhập</button>
+    </div>
+    <div id="registerForm" hidden>
+      <label>Tên học sinh<input id="registerStudentName" /></label>
+      <label>Email đăng nhập<input id="registerEmail" type="email" /></label>
+      <label>Mật khẩu<input id="registerPassword" type="password" minlength="6" /></label>
+      <label>Xác nhận mật khẩu<input id="registerPassword2" type="password" minlength="6" /></label>
+      <label>Email phụ huynh<input id="registerParentEmail" type="email" /></label>
+      <button id="registerBtn" class="primary full">Tạo tài khoản</button>
+    </div>
+    <div id="adminLoginForm" hidden>
+      <label>Tài khoản quản trị<input id="adminUsername" value="admin" autocomplete="username" /></label>
+      <label>Mật khẩu quản trị<input id="adminPassword" type="password" autocomplete="current-password" /></label>
+      <button id="adminLoginBtn" class="primary full">Đăng nhập Super Admin</button>
+      <p class="hint">Tài khoản quản trị được xác thực ở Netlify Function.</p>
+    </div>
+    <div id="authMessage" class="message info">User dùng Supabase Auth. Super Admin dùng tài khoản riêng từ Netlify Environment Variables.</div>
   </div>
+</section>
 
-  <div id="appShell" hidden>
-    <header class="topbar">
-      <div>
-        <h1>PostureGuard AI</h1>
-        <p>Hệ thống AI giám sát và cảnh báo tư thế ngồi học</p>
-      </div>
-      <div class="top-actions">
-        <span id="modelBadge" class="badge badge-warn">Đang tải model…</span>
-        <span id="userBadge" class="badge"></span>
-        <button id="logoutBtn" class="secondary">Đăng xuất</button>
-      </div>
-    </header>
-
-    <nav class="tabs">
-      <button class="tab active" data-tab="camera">📷 Camera</button>
-      <button class="tab" data-tab="upload">🖼️ Upload ảnh</button>
-      <button class="tab" data-tab="dashboard">📊 Dashboard</button>
-      <button class="tab" data-tab="settings">⚙️ Cài đặt cá nhân</button>
-      <button class="tab" data-tab="system">🧠 Cấu hình hệ thống</button>
-    </nav>
-
-    <main>
-      <section id="tab-camera" class="panel active">
-        <div class="grid two">
-          <div class="card">
-            <div class="card-head">
-              <h2>Camera realtime</h2>
-              <div class="actions">
-                <button id="startCamera" class="primary">Bật camera</button>
-                <button id="stopCamera" class="secondary" disabled>Tắt camera</button>
-              </div>
-            </div>
-            <div class="video-wrap">
-              <video id="video" autoplay playsinline muted></video>
-            </div>
-            <p class="hint">AI chạy trực tiếp trên trình duyệt bằng TensorFlow.js. Ảnh camera không được tải lên server.</p>
-          </div>
-
-          <div class="card status-card">
-            <h2>Trạng thái hiện tại</h2>
-            <div id="postureState" class="state state-idle">Chưa bật camera</div>
-            <div class="metric-row"><span>Model đang dùng</span><strong id="activeModelName">--</strong></div>
-            <div class="metric-row"><span>Độ tin cậy</span><strong id="confidence">--</strong></div>
-            <div class="metric-row"><span>Sai liên tục</span><strong id="badDuration">0.0s</strong></div>
-            <div class="metric-row"><span>Cảnh báo tại chỗ</span><strong id="localAlertState">Chưa</strong></div>
-            <div class="metric-row"><span>Email phụ huynh</span><strong id="emailAlertState">Chưa</strong></div>
-            <div id="cameraMessage" class="message info">Bấm “Bật camera” để bắt đầu.</div>
-          </div>
-        </div>
-      </section>
-
-      <section id="tab-upload" class="panel">
-        <div class="grid two">
-          <div class="card">
-            <h2>Kiểm tra từ ảnh</h2>
-            <input id="imageInput" type="file" accept="image/*" />
-            <img id="imagePreview" class="preview" alt="Ảnh xem trước" />
-          </div>
-          <div class="card">
-            <h2>Kết quả AI</h2>
-            <div id="uploadResult" class="state state-idle">Chưa có ảnh</div>
-            <div id="probabilities" class="probabilities"></div>
-          </div>
-        </div>
-      </section>
-
-      <section id="tab-dashboard" class="panel">
-        <div class="card-head dashboard-head">
-          <div>
-            <h2>Dashboard 7 ngày gần nhất</h2>
-            <p class="hint">Dữ liệu của từng tài khoản được lưu riêng trên Supabase.</p>
-          </div>
-          <button id="refreshDashboard" class="secondary">Làm mới</button>
-        </div>
-
-        <div class="kpis">
-          <div class="kpi"><span>Thời gian theo dõi</span><strong id="kpiMonitor">0 phút</strong></div>
-          <div class="kpi"><span>Ngồi sai</span><strong id="kpiBad">0 phút</strong></div>
-          <div class="kpi"><span>Tỷ lệ ngồi đúng</span><strong id="kpiCorrect">--</strong></div>
-          <div class="kpi"><span>Số cảnh báo</span><strong id="kpiAlerts">0</strong></div>
-        </div>
-
-        <div class="grid two charts">
-          <div class="card"><h3>Tỷ lệ tư thế</h3><canvas id="ratioChart"></canvas></div>
-          <div class="card"><h3>Tư thế sai theo loại</h3><canvas id="postureChart"></canvas></div>
-        </div>
-
+<div id="userApp" hidden>
+  <header class="topbar">
+    <div><h1>PostureGuard AI</h1><p>Hệ thống AI giám sát và cảnh báo tư thế ngồi học</p></div>
+    <div class="top-actions"><span id="modelBadge" class="badge badge-warn">Đang tải model…</span><span id="userBadge" class="badge"></span><button id="logoutBtn" class="secondary">Đăng xuất</button></div>
+  </header>
+  <nav class="tabs">
+    <button class="tab active" data-user-tab="camera">📷 Theo dõi tư thế</button>
+    <button class="tab" data-user-tab="dashboard">📊 Dashboard</button>
+    <button class="tab" data-user-tab="settings">⚙️ Cài đặt cá nhân</button>
+  </nav>
+  <main>
+    <section id="user-tab-camera" class="panel active">
+      <div class="grid two">
         <div class="card">
-          <h3>Cảnh báo gần đây</h3>
-          <div class="table-wrap">
-            <table>
-              <thead><tr><th>Thời gian</th><th>Tư thế</th><th>Thời gian sai</th><th>Model</th><th>Kênh</th></tr></thead>
-              <tbody id="alertRows"><tr><td colspan="5">Chưa có dữ liệu</td></tr></tbody>
-            </table>
-          </div>
+          <div class="card-head"><h2>Camera realtime</h2><div class="actions"><button id="startCamera" class="primary">Bật camera</button><button id="stopCamera" class="secondary" disabled>Tắt camera</button></div></div>
+          <div class="video-wrap"><video id="video" autoplay playsinline muted></video></div>
+          <p class="hint">AI chạy trực tiếp trên trình duyệt. Ảnh camera không tải lên server.</p>
         </div>
-      </section>
+        <div class="card">
+          <h2>Trạng thái</h2>
+          <div id="postureState" class="state state-idle">Chưa bật camera</div>
+          <div class="metric-row"><span>Model hệ thống</span><strong id="activeModelName">--</strong></div>
+          <div class="metric-row"><span>Độ tin cậy</span><strong id="confidence">--</strong></div>
+          <div class="metric-row"><span>Ngồi sai liên tục</span><strong id="badDuration">0.0s</strong></div>
+          <div class="metric-row"><span>Cảnh báo âm thanh</span><strong id="localAlertState">Chưa</strong></div>
+          <div class="metric-row"><span>Báo cáo phụ huynh</span><strong id="emailReportState">Chưa gửi</strong></div>
+          <div id="cameraMessage" class="message info">Bấm “Bật camera” để bắt đầu.</div>
+        </div>
+      </div>
+    </section>
+    <section id="user-tab-dashboard" class="panel">
+      <div class="card-head"><div><h2>Dashboard 7 ngày gần nhất</h2><p class="hint">Dữ liệu riêng của tài khoản đang đăng nhập.</p></div><button id="refreshDashboard" class="secondary">Làm mới</button></div>
+      <div class="kpis">
+        <div class="kpi"><span>Thời gian theo dõi</span><strong id="kpiMonitor">0 phút</strong></div>
+        <div class="kpi"><span>Ngồi sai</span><strong id="kpiBad">0 phút</strong></div>
+        <div class="kpi"><span>Tỷ lệ ngồi đúng</span><strong id="kpiCorrect">--</strong></div>
+        <div class="kpi"><span>Số cảnh báo âm thanh</span><strong id="kpiAlerts">0</strong></div>
+      </div>
+      <div class="grid two charts"><div class="card"><h3>Tỷ lệ tư thế</h3><canvas id="ratioChart"></canvas></div><div class="card"><h3>Tư thế sai theo loại</h3><canvas id="postureChart"></canvas></div></div>
+      <div class="card"><h3>Lịch sử cảnh báo</h3><div class="table-wrap"><table><thead><tr><th>Thời gian</th><th>Tư thế</th><th>Thời gian sai</th><th>Model</th><th>Kênh</th></tr></thead><tbody id="alertRows"><tr><td colspan="5">Chưa có dữ liệu</td></tr></tbody></table></div></div>
+    </section>
+    <section id="user-tab-settings" class="panel">
+      <div class="card settings-card">
+        <h2>Cài đặt cá nhân</h2>
+        <label>Tên học sinh<input id="studentName" /></label>
+        <label>Email phụ huynh<input id="parentEmail" type="email" /></label>
+        <label>Cảnh báo âm thanh khi ngồi sai liên tục quá (giây)<input id="localAlertSeconds" type="number" min="3" value="10" /></label>
+        <label class="check"><input id="emailEnabled" type="checkbox" checked /> Gửi báo cáo tổng hợp cho phụ huynh khi kết thúc phiên học</label>
+        <button id="saveSettings" class="primary">Lưu cài đặt</button>
+        <div id="settingsMessage" class="message info">Model AI và email gửi hệ thống do Super Admin quản lý.</div>
+      </div>
+    </section>
+  </main>
+</div>
 
-      <section id="tab-settings" class="panel">
+<div id="adminApp" hidden>
+  <header class="topbar">
+    <div><h1>PostureGuard AI · Super Admin</h1><p>Quản trị model AI và email hệ thống</p></div>
+    <div class="top-actions"><span class="badge badge-ok">SUPER ADMIN</span><button id="adminLogoutBtn" class="secondary">Đăng xuất</button></div>
+  </header>
+  <nav class="tabs"><button class="tab active" data-admin-tab="models">🧠 Model AI</button><button class="tab" data-admin-tab="email">✉️ Email hệ thống</button></nav>
+  <main>
+    <section id="admin-tab-models" class="panel active">
+      <div class="grid two">
         <div class="card settings-card">
-          <h2>Cấu hình tài khoản</h2>
-
-          <label>Tên học sinh<input id="studentName" placeholder="Mai Hải Nam" /></label>
-          <label>Email phụ huynh<input id="parentEmail" type="email" placeholder="parent@gmail.com" /></label>
-
-          <label>Cảnh báo học sinh sau (giây)<input id="localAlertSeconds" type="number" min="3" value="10" /></label>
-          <label>Thời điểm gửi báo cáo tổng hợp
-            <select id="reportSchedule">
-              <option value="session_end">Khi kết thúc phiên học</option>
-              <option value="daily">Cuối ngày</option>
-            </select>
-          </label>
-          <label class="check"><input id="emailEnabled" type="checkbox" checked /> Bật gửi báo cáo tổng hợp cho phụ huynh</label>
-
-          <div class="divider"></div>
-          <h3>Cấu hình gửi email hệ thống</h3>
-          <p class="hint">
-            Tài khoản Gmail dùng để gửi mail được cấu hình an toàn ở Netlify Environment Variables
-            (<code>GMAIL_USER</code> + <code>GMAIL_APP_PASSWORD</code>). User không cần nhập mật khẩu Gmail.
-          </p>
-          <div class="metric-row"><span>Email hệ thống</span><strong id="senderEmailDisplay">Cấu hình trên Netlify</strong></div>
-
-          <div class="actions">
-            <button id="saveSettings" class="primary">Lưu cấu hình</button>
-            <button id="testEmail" class="secondary">Gửi email thử</button>
-          </div>
-          <div id="settingsMessage" class="message info">Mỗi user có email phụ huynh và ngưỡng cảnh báo riêng. Model AI được chọn ở cấu hình hệ thống.</div>
+          <h2>Model đang sử dụng</h2>
+          <label>Model<select id="globalModel"><option value="cnn">CNN</option><option value="resnet50">ResNet50</option><option value="densenet121">DenseNet121</option><option value="efficientnetb0">EfficientNet-B0</option></select></label>
+          <label>Version<input id="globalModelVersion" value="v1" /></label>
+          <div class="metric-row"><span>Active</span><strong id="globalModelDisplay">--</strong></div>
+          <div class="metric-row"><span>Model URL</span><strong id="globalModelUrl" class="mono-small">--</strong></div>
+          <button id="saveSystemConfig" class="primary">Activate model/version</button>
+          <div id="systemMessage" class="message info">Có thể chuyển version mà không restart/redeploy app.</div>
         </div>
-      </section>
-
-      <section id="tab-system" class="panel">
-        <div class="grid two">
-          <div class="card settings-card">
-            <h2>Cấu hình hệ thống AI</h2>
-            <p class="hint">Model AI là cấu hình chung toàn hệ thống. Có thể chuyển model động mà không restart/redeploy app.</p>
-
-            <label>Model đang active
-              <select id="globalModel">
-                <option value="cnn">CNN</option>
-                <option value="resnet50">ResNet50</option>
-                <option value="densenet121">DenseNet121</option>
-                <option value="efficientnetb0">EfficientNet-B0</option>
-              </select>
-            </label>
-
-            <label>Version đang active<input id="globalModelVersion" value="v1" /></label>
-
-            <div class="metric-row"><span>Model hiện tại</span><strong id="globalModelDisplay">--</strong></div>
-            <div class="metric-row"><span>Model URL</span><strong id="globalModelUrl" class="mono-small">--</strong></div>
-
-            <div class="actions">
-              <button id="saveSystemConfig" class="primary">Activate model/version</button>
-              <button id="reloadModelNow" class="secondary">Reload model ngay</button>
-            </div>
-
-            <div id="systemMessage" class="message info">
-              Model được load từ Supabase Storage. Đổi version sẽ reload model động trên trình duyệt.
-            </div>
-          </div>
-
-          <div class="card settings-card">
-            <h2>Upload model mới</h2>
-            <p class="hint">Upload model.json và toàn bộ file *.bin của TensorFlow.js GraphModel lên Supabase Storage.</p>
-
-            <label>Loại model
-              <select id="uploadModelKey">
-                <option value="cnn">CNN</option>
-                <option value="resnet50">ResNet50</option>
-                <option value="densenet121">DenseNet121</option>
-                <option value="efficientnetb0">EfficientNet-B0</option>
-              </select>
-            </label>
-
-            <label>Version<input id="uploadModelVersion" value="v1" /></label>
-
-            <label>Chọn model.json<input id="modelJsonFile" type="file" accept=".json,application/json" /></label>
-            <label>Chọn weight files (*.bin)<input id="modelBinFiles" type="file" accept=".bin,application/octet-stream" multiple /></label>
-
-            <label class="check"><input id="activateAfterUpload" type="checkbox" checked /> Activate ngay sau khi upload</label>
-
-            <div class="actions">
-              <button id="uploadModelBtn" class="primary">Upload model</button>
-            </div>
-
-            <div id="uploadModelMessage" class="message info">
-              Upload không cần restart app. Nếu activate, client sẽ reload model mới.
-            </div>
-          </div>
+        <div class="card settings-card">
+          <h2>Upload model mới</h2>
+          <label>Loại model<select id="uploadModelKey"><option value="cnn">CNN</option><option value="resnet50">ResNet50</option><option value="densenet121">DenseNet121</option><option value="efficientnetb0">EfficientNet-B0</option></select></label>
+          <label>Version<input id="uploadModelVersion" value="v1" /></label>
+          <label>model.json<input id="modelJsonFile" type="file" accept=".json,application/json" /></label>
+          <label>Weights (*.bin)<input id="modelBinFiles" type="file" accept=".bin,application/octet-stream" multiple /></label>
+          <label class="check"><input id="activateAfterUpload" type="checkbox" checked /> Activate ngay sau khi upload</label>
+          <button id="uploadModelBtn" class="primary">Upload model</button>
+          <div id="uploadModelMessage" class="message info">Model lưu trong Supabase Storage.</div>
         </div>
-      </section>
+      </div>
+      <div class="card"><h3>Model Registry</h3><div class="table-wrap"><table><thead><tr><th>Model</th><th>Version</th><th>Upload lúc</th><th>URL</th></tr></thead><tbody id="modelRegistryRows"><tr><td colspan="4">Chưa có dữ liệu</td></tr></tbody></table></div></div>
+    </section>
+    <section id="admin-tab-email" class="panel">
+      <div class="card settings-card">
+        <h2>Email hệ thống</h2>
+        <p class="hint">Gmail được đọc từ Netlify Environment Variables, không gửi secret xuống frontend.</p>
+        <div class="metric-row"><span>Email gửi đi</span><strong id="systemEmailSender">--</strong></div>
+        <div class="metric-row"><span>Trạng thái</span><strong id="systemEmailStatus">--</strong></div>
+        <label>Email nhận thử<input id="adminTestRecipient" type="email" /></label>
+        <button id="adminTestEmailBtn" class="primary">Gửi email test</button>
+        <div id="adminEmailMessage" class="message info">Kiểm tra GMAIL_USER/GMAIL_APP_PASSWORD trên Netlify.</div>
+      </div>
+    </section>
+  </main>
+</div>
 
-    </main>
-
-    <footer>
-      <strong>PostureGuard AI</strong> · TMA2-AI Team · Không nhận diện danh tính, không lưu ảnh camera.
-    </footer>
-  </div>
-
-  <script src="/config.js"></script>
-  <script type="module" src="/app.js"></script>
+<script src="/config.js"></script>
+<script type="module" src="/app.js"></script>
 </body>
 </html>
