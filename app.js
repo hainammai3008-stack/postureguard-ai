@@ -3,7 +3,9 @@ const { createClient } = window.supabase;
 const supabase = createClient(CFG.SUPABASE_URL, CFG.SUPABASE_ANON_KEY);
 
 const CLASS_NAMES = ['leaning_backward','leaning_left','leaning_right','upright'];
+const APP_VERSION='6.6.0';
 const ALERT_SPEECH={leaning_left:'Please sit straight. You are leaning left.',leaning_right:'Please sit straight. You are leaning right.',leaning_backward:'Please sit straight. You are leaning backward.'};
+console.log('[PostureGuard] app version', APP_VERSION);
 const CORRECT_CLASS = 'upright';
 const MIN_CONFIDENCE = 0.65;
 const SMOOTHING_FRAMES = 8;
@@ -340,24 +342,34 @@ async function stopCamera(){cameraRunning=false;++predictLoopToken;if(currentEpi
 async function predictLoop(token){while(cameraRunning&&token===predictLoopToken){if($('video').readyState>=2){try{const r=await infer($('video'));await handlePosture(stableLabel(r.label),r.confidence)}catch(e){console.error(e)}}await sleep(PREDICT_INTERVAL_MS)}}
 async function handlePosture(label,confidence){const now=Date.now();$('confidence').textContent=`${(confidence*100).toFixed(1)}%`;if(!currentEpisode||currentEpisode.label!==label){if(currentEpisode)await closeEpisode(now);currentEpisode={label,startedAt:now,maxConfidence:confidence}}else currentEpisode.maxConfidence=Math.max(currentEpisode.maxConfidence,confidence);if(label===CORRECT_CLASS){badStartAt=null;lastAlertAt=0;$('badDuration').textContent='0.0s';$('localAlertState').textContent='Chưa';setState('good','✅ Tư thế đúng');msg($('cameraMessage'),'ok','Bạn đang ngồi đúng tư thế.');return}if(label==='unknown'){setState('unknown','⚠️ Chưa xác định');return}if(!badStartAt){badStartAt=now;lastAlertAt=0}const seconds=(now-badStartAt)/1000;$('badDuration').textContent=`${seconds.toFixed(1)}s`;setState('bad',`❌ ${DISPLAY[label]}`);msg($('cameraMessage'),'error',`Phát hiện ${DISPLAY[label].toLowerCase()} trong ${seconds.toFixed(0)} giây.`);const alertSeconds=Math.max(1,Number(profile.local_alert_seconds||10));const alertMs=alertSeconds*1000;if(seconds>=alertSeconds&&(lastAlertAt===0||now-lastAlertAt>=alertMs)){lastAlertAt=now;$('localAlertState').textContent=`Đã cảnh báo • lặp mỗi ${alertSeconds}s`;try{await speak(ALERT_SPEECH[label] || 'Please sit straight and correct your posture.')}catch(e){console.error('Không phát được cảnh báo âm thanh:',e)}try{await userApi('alert-log',{method:'POST',body:JSON.stringify({session_id:sessionId,posture:label,duration_seconds:Math.round(seconds),model_key:systemConfig.selected_model,channel:'audio'})})}catch(e){console.error('Không ghi được alert-log:',e)}}}
 async function closeEpisode(endedAt){const ep=currentEpisode;currentEpisode=null;if(!ep||!sessionId||ep.label==='unknown')return;await userApi('event',{method:'POST',body:JSON.stringify({session_id:sessionId,posture:ep.label,confidence:ep.maxConfidence,started_at:new Date(ep.startedAt).toISOString(),duration_seconds:Math.max(1,Math.round((endedAt-ep.startedAt)/1000)),model_key:systemConfig.selected_model})})}
+function getEnglishVoice(){
+  const voices=window.speechSynthesis?.getVoices?.() || [];
+  return voices.find(v=>/^en-US$/i.test(v.lang))
+      || voices.find(v=>/^en-GB$/i.test(v.lang))
+      || voices.find(v=>/^en/i.test(v.lang))
+      || null;
+}
+
 function speak(text){
   return new Promise((resolve,reject)=>{
     if(!('speechSynthesis' in window)){
-      reject(new Error('Trình duyệt không hỗ trợ Speech Synthesis.'));
+      reject(new Error('Speech synthesis is not supported by this browser.'));
       return;
     }
     try{
       speechSynthesis.cancel();
       const u=new SpeechSynthesisUtterance(text);
       u.lang='en-US';
+      const englishVoice=getEnglishVoice();
+      if(englishVoice) u.voice=englishVoice;
       u.volume=1;
       u.rate=1;
       u.pitch=1;
-      u.onstart=()=>console.log('🔊 Speech started:',text);
-      u.onend=()=>{console.log('🔊 Speech ended');resolve();};
-      u.onerror=(e)=>{console.error('🔊 Speech error:',e);reject(new Error(e.error||'Không phát được âm thanh.'));};
+      u.onstart=()=>console.log(`[PostureGuard ${APP_VERSION}] Speech started:`,text,'voice=',u.voice?.name,u.voice?.lang);
+      u.onend=()=>resolve();
+      u.onerror=(e)=>reject(new Error(`Speech error: ${e.error || 'unknown'}`));
       speechSynthesis.speak(u);
-    }catch(e){reject(e);}
+    }catch(e){reject(e)}
   });
 }
 
