@@ -1,5 +1,5 @@
 import {requireAdmin,json,parseBody} from './_shared.mjs';
-const models=new Set(['cnn','resnet50','densenet121','efficientnetb0']);
+const models=new Set(['mobilenetv2','resnet50','densenet121','efficientnetb0']);
 function publicModelUrl(modelKey,version){const base=process.env.SUPABASE_URL,bucket=process.env.SUPABASE_MODEL_BUCKET||'ai-models';return `${base}/storage/v1/object/public/${bucket}/${modelKey}/${version}/model.json`}
 export async function handler(event){
   try{

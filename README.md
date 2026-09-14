@@ -62,7 +62,7 @@ ai-models/{model_key}/{version}/
 ```
 
 Hỗ trợ:
-- CNN
+- MobileNetV2
 - ResNet50
 - DenseNet121
 - EfficientNet-B0
@@ -105,3 +105,8 @@ Model files are no longer posted through a Netlify Function. The admin UI first 
 - Audio warning repeats every `local_alert_seconds` while bad posture continues.
 - `unknown` frames no longer reset the bad-posture timer.
 - Returning to stable `upright` resets the timer and alert cycle.
+
+
+## v6.7 - Model được hỗ trợ
+
+Hệ thống chỉ hỗ trợ 4 model: MobileNetV2, ResNet50, DenseNet121, EfficientNet-B0. Với DB đã triển khai bản cũ, chạy `supabase/postureguard_migrate_models_v6_7.sql`.

@@ -6,7 +6,7 @@ from pathlib import Path
 import os
 
 MODELS = {
-    "cnn": "/content/cnn.keras",
+    "mobilenetv2": "/content/mobilenetv2.keras",
     "resnet50": "/content/resnet50.keras",
     "densenet121": "/content/densenet121.keras",
     "efficientnetb0": "/content/efficientnetb0.keras",

@@ -3,7 +3,7 @@ const { createClient } = window.supabase;
 const supabase = createClient(CFG.SUPABASE_URL, CFG.SUPABASE_ANON_KEY);
 
 const CLASS_NAMES = ['leaning_backward','leaning_left','leaning_right','upright'];
-const APP_VERSION='6.6.0';
+const APP_VERSION='6.7.0';
 const ALERT_SPEECH={leaning_left:'Please sit straight. You are leaning left.',leaning_right:'Please sit straight. You are leaning right.',leaning_backward:'Please sit straight. You are leaning backward.'};
 console.log('[PostureGuard] app version', APP_VERSION);
 const CORRECT_CLASS = 'upright';
@@ -12,7 +12,7 @@ const SMOOTHING_FRAMES = 8;
 const PREDICT_INTERVAL_MS = 600;
 
 const MODEL_NAMES = {
-  cnn:'CNN',
+  mobilenetv2:'MobileNetV2',
   resnet50:'ResNet50',
   densenet121:'DenseNet121',
   efficientnetb0:'EfficientNet-B0'
@@ -333,7 +333,7 @@ async function enterUserApp(session) {
 async function loadProfile(){profile=await userApi('profile',{method:'GET'});$('studentName').value=profile.student_name||'';$('parentEmail').value=profile.parent_email||'';$('localAlertSeconds').value=profile.local_alert_seconds||10;$('emailEnabled').checked=profile.email_enabled!==false}
 async function saveSettings(){const next={student_name:$('studentName').value.trim(),parent_email:$('parentEmail').value.trim(),local_alert_seconds:Number($('localAlertSeconds').value||10),email_enabled:$('emailEnabled').checked};try{await userApi('profile',{method:'POST',body:JSON.stringify(next)});profile=next;msg($('settingsMessage'),'ok','Đã lưu cài đặt cá nhân.')}catch(e){msg($('settingsMessage'),'error',e.message)}}
 async function loadPublicConfig(){systemConfig=await userApi('public-config',{method:'GET'})}
-async function loadSelectedModel(force=false){const key=systemConfig?.selected_model||'cnn',version=systemConfig?.model_version||'v1',url=systemConfig?.model_url;if(!url){$('modelBadge').textContent='Chưa có model active';$('modelBadge').className='badge badge-bad';return}const cacheKey=`${key}:${version}:${url}`;if(!force&&model&&activeModelCacheKey===cacheKey)return;$('modelBadge').textContent=`Đang tải ${MODEL_NAMES[key]} ${version}…`;$('modelBadge').className='badge badge-warn';if(model&&model.dispose)model.dispose();model=null;try{const sep=url.includes('?')?'&':'?';model=await tf.loadGraphModel(`${url}${sep}v=${encodeURIComponent(version)}&t=${encodeURIComponent(systemConfig.updated_at||Date.now())}`);activeModelCacheKey=cacheKey;$('modelBadge').textContent=`${MODEL_NAMES[key]} ${version}`;$('modelBadge').className='badge badge-ok';$('activeModelName').textContent=`${MODEL_NAMES[key]} ${version}`}catch(e){console.error(e);$('modelBadge').textContent='Lỗi tải model';$('modelBadge').className='badge badge-bad'}}
+async function loadSelectedModel(force=false){const key=systemConfig?.selected_model||'mobilenetv2',version=systemConfig?.model_version||'v1',url=systemConfig?.model_url;if(!url){$('modelBadge').textContent='Chưa có model active';$('modelBadge').className='badge badge-bad';return}const cacheKey=`${key}:${version}:${url}`;if(!force&&model&&activeModelCacheKey===cacheKey)return;$('modelBadge').textContent=`Đang tải ${MODEL_NAMES[key]} ${version}…`;$('modelBadge').className='badge badge-warn';if(model&&model.dispose)model.dispose();model=null;try{const sep=url.includes('?')?'&':'?';model=await tf.loadGraphModel(`${url}${sep}v=${encodeURIComponent(version)}&t=${encodeURIComponent(systemConfig.updated_at||Date.now())}`);activeModelCacheKey=cacheKey;$('modelBadge').textContent=`${MODEL_NAMES[key]} ${version}`;$('modelBadge').className='badge badge-ok';$('activeModelName').textContent=`${MODEL_NAMES[key]} ${version}`}catch(e){console.error(e);$('modelBadge').textContent='Lỗi tải model';$('modelBadge').className='badge badge-bad'}}
 function preprocess(source){return tf.tidy(()=>tf.browser.fromPixels(source,3).resizeBilinear([224,224]).toFloat().expandDims(0))}
 async function infer(source){if(!model)throw new Error('Model chưa sẵn sàng');const input=preprocess(source);let out;try{out=await model.executeAsync(input);const tensor=Array.isArray(out)?out[0]:out,probs=Array.from(await tensor.data());if(Array.isArray(out))out.forEach(t=>t.dispose());else out.dispose();const idx=probs.indexOf(Math.max(...probs)),confidence=probs[idx]||0,raw=CLASS_NAMES[idx]||'unknown';return{label:confidence>=MIN_CONFIDENCE?raw:'unknown',confidence,probs}}finally{input.dispose()}}
 function stableLabel(label){history.push(label);if(history.length>SMOOTHING_FRAMES)history.shift();const valid=history.filter(x=>x!=='unknown');if(!valid.length)return'unknown';const c={};valid.forEach(x=>c[x]=(c[x]||0)+1);return Object.entries(c).sort((a,b)=>b[1]-a[1])[0][0]}
@@ -420,7 +420,7 @@ function firstTensorFromOutput(out){
 
 async function loadAdminTestModel(force=false){
   const c=await adminApi('system-config',{method:'GET'});
-  const key=c.selected_model||'cnn';
+  const key=c.selected_model||'mobilenetv2';
   const version=c.model_version||'v1';
   const url=c.model_url;
   if(!url)throw new Error('Chưa có model active. Hãy upload và activate model trước.');
@@ -513,7 +513,7 @@ async function runAdminImageTest(){
   }
 }
 
-async function loadAdminConfig(){const c=await adminApi('system-config',{method:'GET'});$('globalModel').value=c.selected_model||'cnn';$('globalModelVersion').value=c.model_version||'v1';$('globalModelDisplay').textContent=`${MODEL_NAMES[c.selected_model]||c.selected_model} ${c.model_version||''}`;$('globalModelUrl').textContent=c.model_url||'--'}
+async function loadAdminConfig(){const c=await adminApi('system-config',{method:'GET'});$('globalModel').value=c.selected_model||'mobilenetv2';$('globalModelVersion').value=c.model_version||'v1';$('globalModelDisplay').textContent=`${MODEL_NAMES[c.selected_model]||c.selected_model} ${c.model_version||''}`;$('globalModelUrl').textContent=c.model_url||'--'}
 async function saveAdminConfig(){try{await adminApi('system-config',{method:'POST',body:JSON.stringify({selected_model:$('globalModel').value,model_version:$('globalModelVersion').value.trim()||'v1'})});msg($('systemMessage'),'ok','Đã activate model/version.');await loadAdminConfig()}catch(e){msg($('systemMessage'),'error',e.message)}}
 async function readApiResponse(response) {
   const raw = await response.text();

@@ -14,7 +14,7 @@ export async function handler(event){
     if(!sender||!pass) throw new Error('Thiếu GMAIL_USER/GMAIL_APP_PASSWORD trên Netlify');
     const transporter=nodemailer.createTransport({service:'gmail',auth:{user:sender,pass}});
     const student=profile.student_name||'Học sinh', posture=DISPLAY[b.posture]||b.posture||'tư thế chưa phù hợp', duration=Math.round(Number(b.duration_seconds||0));
-    const model=b.model_key||profile.selected_model||'cnn';
+    const model=b.model_key||profile.selected_model||'mobilenetv2';
     const subject=b.is_test?'[PostureGuard AI] Email kiểm tra':`[PostureGuard AI] Cảnh báo tư thế của ${student}`;
     const text=b.is_test
       ? `Đây là email kiểm tra từ PostureGuard AI. Cấu hình email đang hoạt động.\n\nNgười nhận: ${profile.parent_email}\nModel đang chọn: ${model}.`

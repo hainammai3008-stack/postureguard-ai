@@ -83,17 +83,17 @@ alter table public.system_config
 
 update public.system_config
 set
-  selected_model = coalesce(selected_model, 'cnn'),
+  selected_model = coalesce(selected_model, 'mobilenetv2'),
   model_version = coalesce(model_version, 'v1'),
   model_url = coalesce(model_url, ''),
   updated_at = coalesce(updated_at, now());
 
 insert into public.system_config(id, selected_model, model_version, model_url, updated_at)
-select 1, 'cnn', 'v1', '', now()
+select 1, 'mobilenetv2', 'v1', '', now()
 where not exists (select 1 from public.system_config where id = 1);
 
 alter table public.system_config
-  alter column selected_model set default 'cnn',
+  alter column selected_model set default 'mobilenetv2',
   alter column model_version set default 'v1',
   alter column model_url set default '',
   alter column updated_at set default now();
@@ -122,7 +122,7 @@ begin
   ) then
     alter table public.system_config
       add constraint system_config_selected_model_check
-      check (selected_model in ('cnn','resnet50','densenet121','efficientnetb0'));
+      check (selected_model in ('mobilenetv2','resnet50','densenet121','efficientnetb0'));
   end if;
 end $$;
 
@@ -159,7 +159,7 @@ begin
   ) then
     alter table public.model_registry
       add constraint model_registry_model_key_check
-      check (model_key in ('cnn','resnet50','densenet121','efficientnetb0'));
+      check (model_key in ('mobilenetv2','resnet50','densenet121','efficientnetb0'));
   end if;
 
   if not exists (
@@ -192,12 +192,12 @@ alter table public.monitor_sessions
 
 update public.monitor_sessions
 set
-  model_key = coalesce(model_key, 'cnn'),
+  model_key = coalesce(model_key, 'mobilenetv2'),
   started_at = coalesce(started_at, now()),
   created_at = coalesce(created_at, now());
 
 alter table public.monitor_sessions
-  alter column model_key set default 'cnn',
+  alter column model_key set default 'mobilenetv2',
   alter column started_at set default now(),
   alter column created_at set default now();
 
@@ -224,14 +224,14 @@ alter table public.posture_events
 update public.posture_events
 set
   confidence = coalesce(confidence, 0),
-  model_key = coalesce(model_key, 'cnn'),
+  model_key = coalesce(model_key, 'mobilenetv2'),
   started_at = coalesce(started_at, now()),
   duration_seconds = coalesce(duration_seconds, 1),
   created_at = coalesce(created_at, now());
 
 alter table public.posture_events
   alter column confidence set default 0,
-  alter column model_key set default 'cnn',
+  alter column model_key set default 'mobilenetv2',
   alter column started_at set default now(),
   alter column duration_seconds set default 1,
   alter column created_at set default now();
@@ -260,13 +260,13 @@ update public.alerts
 set
   duration_seconds = coalesce(duration_seconds, 0),
   channel = coalesce(channel, 'audio'),
-  model_key = coalesce(model_key, 'cnn'),
+  model_key = coalesce(model_key, 'mobilenetv2'),
   sent_at = coalesce(sent_at, now());
 
 alter table public.alerts
   alter column duration_seconds set default 0,
   alter column channel set default 'audio',
-  alter column model_key set default 'cnn',
+  alter column model_key set default 'mobilenetv2',
   alter column sent_at set default now();
 
 create index if not exists alerts_user_sent_idx
@@ -296,7 +296,7 @@ set
   monitored_seconds = coalesce(monitored_seconds, 0),
   bad_seconds = coalesce(bad_seconds, 0),
   correct_percent = coalesce(correct_percent, 0),
-  model_key = coalesce(model_key, 'cnn'),
+  model_key = coalesce(model_key, 'mobilenetv2'),
   sent_at = coalesce(sent_at, now());
 
 alter table public.reports
@@ -304,7 +304,7 @@ alter table public.reports
   alter column monitored_seconds set default 0,
   alter column bad_seconds set default 0,
   alter column correct_percent set default 0,
-  alter column model_key set default 'cnn',
+  alter column model_key set default 'mobilenetv2',
   alter column sent_at set default now();
 
 create index if not exists reports_user_sent_idx

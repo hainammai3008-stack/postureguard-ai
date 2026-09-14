@@ -1,7 +1,7 @@
 import crypto from 'crypto';
 import { requireAdmin, json, parseBody } from './_shared.mjs';
 
-const allowedModels = new Set(['cnn','resnet50','densenet121','efficientnetb0']);
+const allowedModels = new Set(['mobilenetv2','resnet50','densenet121','efficientnetb0']);
 
 function fail(statusCode, requestId, stage, error, detail, extra = {}) {
   return json(statusCode, { ok:false, request_id:requestId, stage, error, detail, ...extra });
