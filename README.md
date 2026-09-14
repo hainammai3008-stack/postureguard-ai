@@ -100,3 +100,8 @@ Model files are no longer posted through a Netlify Function. The admin UI first 
 - Ảnh test không gửi lên server.
 - Hiển thị model/version active, TensorFlow.js/backend, lớp dự đoán, confidence và xác suất 4 lớp.
 - Dùng cùng preprocessing 224x224 RGB float32 như camera realtime; không chia 255 vì preprocessing MobileNetV2 nằm trong graph hiện tại.
+
+## v6.4 - Repeating posture audio alerts
+- Audio warning repeats every `local_alert_seconds` while bad posture continues.
+- `unknown` frames no longer reset the bad-posture timer.
+- Returning to stable `upright` resets the timer and alert cycle.
