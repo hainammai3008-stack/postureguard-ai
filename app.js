@@ -339,7 +339,41 @@ async function stopCamera(){cameraRunning=false;++predictLoopToken;if(currentEpi
 async function predictLoop(token){while(cameraRunning&&token===predictLoopToken){if($('video').readyState>=2){try{const r=await infer($('video'));await handlePosture(stableLabel(r.label),r.confidence)}catch(e){console.error(e)}}await sleep(PREDICT_INTERVAL_MS)}}
 async function handlePosture(label,confidence){const now=Date.now();$('confidence').textContent=`${(confidence*100).toFixed(1)}%`;if(!currentEpisode||currentEpisode.label!==label){if(currentEpisode)await closeEpisode(now);currentEpisode={label,startedAt:now,maxConfidence:confidence}}else currentEpisode.maxConfidence=Math.max(currentEpisode.maxConfidence,confidence);if(label===CORRECT_CLASS){badStartAt=null;localAlertSent=false;$('badDuration').textContent='0.0s';$('localAlertState').textContent='Chưa';setState('good','✅ Tư thế đúng');msg($('cameraMessage'),'ok','Bạn đang ngồi đúng tư thế.');return}if(label==='unknown'){badStartAt=null;$('badDuration').textContent='0.0s';setState('unknown','⚠️ Chưa xác định');return}if(!badStartAt){badStartAt=now;localAlertSent=false}const seconds=(now-badStartAt)/1000;$('badDuration').textContent=`${seconds.toFixed(1)}s`;setState('bad',`❌ ${DISPLAY[label]}`);msg($('cameraMessage'),'error',`Phát hiện ${DISPLAY[label].toLowerCase()} trong ${seconds.toFixed(0)} giây.`);if(!localAlertSent&&seconds>=Number(profile.local_alert_seconds||10)){localAlertSent=true;$('localAlertState').textContent='Đã cảnh báo';speak(`Bạn đang ${DISPLAY[label].toLowerCase()}. Hãy điều chỉnh lại tư thế ngồi.`);await userApi('alert-log',{method:'POST',body:JSON.stringify({session_id:sessionId,posture:label,duration_seconds:Math.round(seconds),model_key:systemConfig.selected_model,channel:'audio'})})}}
 async function closeEpisode(endedAt){const ep=currentEpisode;currentEpisode=null;if(!ep||!sessionId||ep.label==='unknown')return;await userApi('event',{method:'POST',body:JSON.stringify({session_id:sessionId,posture:ep.label,confidence:ep.maxConfidence,started_at:new Date(ep.startedAt).toISOString(),duration_seconds:Math.max(1,Math.round((endedAt-ep.startedAt)/1000)),model_key:systemConfig.selected_model})})}
-function speak(text){if(!('speechSynthesis'in window))return;speechSynthesis.cancel();const u=new SpeechSynthesisUtterance(text);u.lang='vi-VN';speechSynthesis.speak(u)}
+function speak(text){
+  return new Promise((resolve,reject)=>{
+    if(!('speechSynthesis' in window)){
+      reject(new Error('Trình duyệt không hỗ trợ Speech Synthesis.'));
+      return;
+    }
+    try{
+      speechSynthesis.cancel();
+      const u=new SpeechSynthesisUtterance(text);
+      u.lang='vi-VN';
+      u.volume=1;
+      u.rate=1;
+      u.pitch=1;
+      u.onstart=()=>console.log('🔊 Speech started:',text);
+      u.onend=()=>{console.log('🔊 Speech ended');resolve();};
+      u.onerror=(e)=>{console.error('🔊 Speech error:',e);reject(new Error(e.error||'Không phát được âm thanh.'));};
+      speechSynthesis.speak(u);
+    }catch(e){reject(e);}
+  });
+}
+
+async function testSound(){
+  const btn=$('testSoundBtn');
+  if(btn)btn.disabled=true;
+  try{
+    msg($('settingsMessage'),'info','Đang phát âm thanh thử…');
+    await speak('PostureGuard AI đã sẵn sàng cảnh báo tư thế.');
+    msg($('settingsMessage'),'ok','Âm thanh hoạt động bình thường.');
+  }catch(e){
+    console.error('TEST SOUND ERROR:',e);
+    msg($('settingsMessage'),'error',`Không phát được âm thanh: ${e.message}`);
+  }finally{
+    if(btn)btn.disabled=false;
+  }
+}
 function setState(kind,text){$('postureState').textContent=text;$('postureState').className=`state state-${kind}`}
 async function loadDashboard(){try{const data=await userApi('dashboard?days=7',{method:'GET'}),monitored=Number(data.monitored_seconds||0),bad=Number(data.bad_seconds||0),correct=monitored>0?Math.max(0,(monitored-bad)/monitored*100):0;$('kpiMonitor').textContent=`${Math.round(monitored/60)} phút`;$('kpiBad').textContent=`${Math.round(bad/60)} phút`;$('kpiCorrect').textContent=monitored?`${correct.toFixed(1)}%`:'--';$('kpiAlerts').textContent=data.alerts?.length||0;renderCharts(monitored,bad,data.bad_by_posture||{});renderAlerts(data.alerts||[])}catch(e){console.error(e)}}
 function renderCharts(monitored,bad,byPosture){if(ratioChart)ratioChart.destroy();if(postureChart)postureChart.destroy();ratioChart=new Chart($('ratioChart'),{type:'doughnut',data:{labels:['Ngồi đúng','Ngồi sai'],datasets:[{data:[Math.max(0,monitored-bad),bad],backgroundColor:['#36d399','#ff6b6b']}]},options:{plugins:{legend:{labels:{color:'#dbe5ff'}}}}});const keys=['leaning_left','leaning_right','leaning_backward'];postureChart=new Chart($('postureChart'),{type:'bar',data:{labels:keys.map(k=>DISPLAY[k]),datasets:[{label:'Phút',data:keys.map(k=>(byPosture[k]||0)/60),backgroundColor:'#6ea8fe'}]},options:{scales:{x:{ticks:{color:'#dbe5ff'}},y:{ticks:{color:'#dbe5ff'}}},plugins:{legend:{labels:{color:'#dbe5ff'}}}}})}
@@ -622,6 +656,7 @@ $('homeOpenDashboard').addEventListener('click', () => openUserTab('dashboard'))
 $('startCamera').addEventListener('click', startCamera);
 $('stopCamera').addEventListener('click', stopCamera);
 $('saveSettings').addEventListener('click', saveSettings);
+$('testSoundBtn').addEventListener('click', testSound);
 $('refreshDashboard').addEventListener('click', loadDashboard);
 
 $('saveSystemConfig').addEventListener('click', saveAdminConfig);
