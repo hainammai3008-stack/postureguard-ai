@@ -3,11 +3,15 @@ const { createClient } = window.supabase;
 const supabase = createClient(CFG.SUPABASE_URL, CFG.SUPABASE_ANON_KEY);
 
 const CLASS_NAMES = ['leaning_backward','leaning_left','leaning_right','upright'];
-const APP_VERSION='6.8.0';
+const APP_VERSION='6.10.0';
 const ALERT_SPEECH={leaning_left:'Please sit straight. You are leaning left.',leaning_right:'Please sit straight. You are leaning right.',leaning_backward:'Please sit straight. You are leaning backward.'};
 console.log('[PostureGuard] app version', APP_VERSION);
 const CORRECT_CLASS = 'upright';
-const MIN_CONFIDENCE = 0.65;
+const DEFAULT_MIN_CONFIDENCE = 0.50;
+function getConfidenceThreshold(){
+  const v = Number(systemConfig?.confidence_threshold);
+  return Number.isFinite(v) && v > 0 && v <= 1 ? v : DEFAULT_MIN_CONFIDENCE;
+}
 const PROBABILITY_AVG_FRAMES = 10;
 const PREDICT_INTERVAL_MS = 250;
 const CENTER_CROP_SCALE = 0.90;
@@ -380,7 +384,7 @@ function averageProbabilities(probs){
   const idx=avg.indexOf(confidence);
   const raw=CLASS_NAMES[idx]||'unknown';
   return {
-    label: confidence>=MIN_CONFIDENCE?raw:'unknown',
+    label: confidence>=getConfidenceThreshold()?raw:'unknown',
     confidence,
     probs:avg,
     frames:probabilityHistory.length
@@ -543,14 +547,15 @@ async function runAdminImageTest(){
       const max=Math.max(...probs);
       const idx=probs.indexOf(max);
       const raw=CLASS_NAMES[idx]||'unknown';
-      const shown=max>=MIN_CONFIDENCE?raw:'unknown';
+      const threshold=getConfidenceThreshold();
+      const shown=max>=threshold?raw:'unknown';
       $('adminTestPrediction').textContent=DISPLAY[shown]||shown;
       $('adminTestConfidence').textContent=`${(max*100).toFixed(2)}%`;
       $('adminTestProbabilities').innerHTML=CLASS_NAMES.map((name,i)=>{
         const p=Number(probs[i]||0)*100;
         return `<div class="prob-row"><div class="prob-label"><span>${DISPLAY[name]||name}</span><strong>${p.toFixed(2)}%</strong></div><div class="prob-track"><div class="prob-fill" style="width:${Math.max(0,Math.min(100,p))}%"></div></div></div>`;
       }).join('');
-      msg($('adminImageTestMessage'),shown==='unknown'?'info':'ok',shown==='unknown'?`Độ tin cậy cao nhất ${max.toFixed(3)} thấp hơn ngưỡng ${MIN_CONFIDENCE}.`:`Detect thành công: ${DISPLAY[raw]||raw} (${(max*100).toFixed(2)}%).`);
+      msg($('adminImageTestMessage'),shown==='unknown'?'info':'ok',shown==='unknown'?`Độ tin cậy cao nhất ${max.toFixed(3)} thấp hơn ngưỡng ${threshold.toFixed(2)}.`:`Detect thành công: ${DISPLAY[raw]||raw} (${(max*100).toFixed(2)}%).`);
     }finally{
       input.dispose();
       disposeTensorOutput(out);
@@ -563,8 +568,8 @@ async function runAdminImageTest(){
   }
 }
 
-async function loadAdminConfig(){const c=await adminApi('system-config',{method:'GET'});$('globalModel').value=c.selected_model||'mobilenetv2';$('globalModelVersion').value=c.model_version||'v1';$('globalModelDisplay').textContent=`${MODEL_NAMES[c.selected_model]||c.selected_model} ${c.model_version||''}`;$('globalModelUrl').textContent=c.model_url||'--'}
-async function saveAdminConfig(){try{await adminApi('system-config',{method:'POST',body:JSON.stringify({selected_model:$('globalModel').value,model_version:$('globalModelVersion').value.trim()||'v1'})});msg($('systemMessage'),'ok','Đã activate model/version.');await loadAdminConfig()}catch(e){msg($('systemMessage'),'error',e.message)}}
+async function loadAdminConfig(){const c=await adminApi('system-config',{method:'GET'});$('globalModel').value=c.selected_model||'mobilenetv2';$('globalModelVersion').value=c.model_version||'v1';if($('globalConfidenceThreshold'))$('globalConfidenceThreshold').value=Number(c.confidence_threshold??DEFAULT_MIN_CONFIDENCE).toFixed(2);$('globalModelDisplay').textContent=`${MODEL_NAMES[c.selected_model]||c.selected_model} ${c.model_version||''}`;$('globalModelUrl').textContent=c.model_url||'--'}
+async function saveAdminConfig(){try{const threshold=Number($('globalConfidenceThreshold')?.value??DEFAULT_MIN_CONFIDENCE);if(!Number.isFinite(threshold)||threshold<=0||threshold>1)throw new Error('Ngưỡng confidence phải lớn hơn 0 và không vượt quá 1.');await adminApi('system-config',{method:'POST',body:JSON.stringify({selected_model:$('globalModel').value,model_version:$('globalModelVersion').value.trim()||'v1',confidence_threshold:threshold})});msg($('systemMessage'),'ok',`Đã lưu cấu hình. Confidence threshold = ${threshold.toFixed(2)}.`);await loadAdminConfig()}catch(e){msg($('systemMessage'),'error',e.message)}}
 async function readApiResponse(response) {
   const raw = await response.text();
   let data = null;

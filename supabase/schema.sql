@@ -18,6 +18,7 @@ create table if not exists public.system_config (
     check (selected_model in ('mobilenetv2','resnet50','densenet121','efficientnetb0')),
   model_version text not null default 'v1',
   model_url text not null default '',
+  confidence_threshold numeric(4,3) not null default 0.500 check (confidence_threshold > 0 and confidence_threshold <= 1),
   updated_at timestamptz not null default now()
 );
 

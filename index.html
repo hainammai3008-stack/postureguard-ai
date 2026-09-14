@@ -254,6 +254,10 @@
             </select>
           </label>
           <label>Version<input id="globalModelVersion" value="v1" /></label>
+          <label>Ngưỡng confidence
+            <input id="globalConfidenceThreshold" type="number" min="0.10" max="1.00" step="0.05" value="0.50" />
+          </label>
+          <div class="hint">Ví dụ 0.50 = chỉ nhận kết quả khi độ tin cậy từ 50% trở lên. Áp dụng cho camera realtime và test ảnh.</div>
           <div class="metric-row"><span>Active</span><strong id="globalModelDisplay">--</strong></div>
           <div class="metric-row"><span>Model URL</span><strong id="globalModelUrl" class="mono-small">--</strong></div>
           <button id="saveSystemConfig" class="primary">Activate model/version</button>
@@ -351,6 +355,6 @@
 </div>
 
 <script src="/config.js"></script>
-<script type="module" src="/app.js?v=6.7.0"></script>
+<script type="module" src="/app.js?v=6.10.0"></script>
 </body>
 </html>

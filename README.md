@@ -117,6 +117,11 @@ Realtime camera inference was updated to reduce jitter and improve webcam behavi
 - Resize cropped frame to 224x224.
 - Run model on raw RGB float input (no extra /255 normalization).
 - Average class probabilities across the latest 10 frames.
-- Apply confidence threshold 0.65 after probability averaging.
+- Apply confidence threshold 0.50 after probability averaging.
 - Run inference every 250 ms (~4 FPS).
 - Uploaded-image admin test remains unchanged and uses the full uploaded image.
+
+## v6.10 - Confidence threshold trong cấu hình hệ thống
+- Super Admin có thể cấu hình `confidence_threshold` (mặc định 0.50) tại Model AI.
+- Giá trị áp dụng cho cả camera realtime và chức năng test ảnh trong Admin.
+- Với database đã tồn tại, chạy `supabase/postureguard_migrate_confidence_v6_10.sql` một lần.

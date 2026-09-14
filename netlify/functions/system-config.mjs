@@ -10,9 +10,11 @@ export async function handler(event){
     if(event.httpMethod==='POST'){
       const b=parseBody(event); if(!models.has(b.selected_model))return json(400,{error:'Model không hợp lệ'});
       const version=String(b.model_version||'v1').trim(); if(!/^[A-Za-z0-9._-]+$/.test(version))return json(400,{error:'Version không hợp lệ'});
+      const confidenceThreshold=Number(b.confidence_threshold ?? 0.50);
+      if(!Number.isFinite(confidenceThreshold)||confidenceThreshold<=0||confidenceThreshold>1)return json(400,{error:'confidence_threshold phải > 0 và <= 1'});
       const {data:exists,error:re}=await db.from('model_registry').select('id').eq('model_key',b.selected_model).eq('model_version',version).maybeSingle(); if(re)throw re;
       if(!exists)return json(400,{error:'Version này chưa được upload'});
-      const row={id:1,selected_model:b.selected_model,model_version:version,model_url:publicModelUrl(b.selected_model,version),updated_at:new Date().toISOString()};
+      const row={id:1,selected_model:b.selected_model,model_version:version,model_url:publicModelUrl(b.selected_model,version),confidence_threshold:confidenceThreshold,updated_at:new Date().toISOString()};
       const {error}=await db.from('system_config').upsert(row,{onConflict:'id'}); if(error)throw error; return json(200,{ok:true,config:row});
     }
     return json(405,{error:'Method not allowed'});
