@@ -344,7 +344,59 @@ function renderAlerts(rows){$('alertRows').innerHTML=rows.length?rows.map(a=>`<t
 async function loadAdminConsole(){await Promise.all([loadAdminConfig(),loadModelRegistry(),loadEmailStatus()])}
 async function loadAdminConfig(){const c=await adminApi('system-config',{method:'GET'});$('globalModel').value=c.selected_model||'cnn';$('globalModelVersion').value=c.model_version||'v1';$('globalModelDisplay').textContent=`${MODEL_NAMES[c.selected_model]||c.selected_model} ${c.model_version||''}`;$('globalModelUrl').textContent=c.model_url||'--'}
 async function saveAdminConfig(){try{await adminApi('system-config',{method:'POST',body:JSON.stringify({selected_model:$('globalModel').value,model_version:$('globalModelVersion').value.trim()||'v1'})});msg($('systemMessage'),'ok','Đã activate model/version.');await loadAdminConfig()}catch(e){msg($('systemMessage'),'error',e.message)}}
-async function uploadModel(){const key=$('uploadModelKey').value,version=$('uploadModelVersion').value.trim(),jsonFile=$('modelJsonFile').files[0],bins=Array.from($('modelBinFiles').files||[]),activate=$('activateAfterUpload').checked;if(!version)return msg($('uploadModelMessage'),'error','Thiếu version');if(!jsonFile)return msg($('uploadModelMessage'),'error','Thiếu model.json');if(!bins.length)return msg($('uploadModelMessage'),'error','Thiếu file *.bin');const form=new FormData();form.append('model_key',key);form.append('model_version',version);form.append('activate',activate?'true':'false');form.append('model_json',jsonFile);bins.forEach(f=>form.append('weight_files',f));try{msg($('uploadModelMessage'),'info','Đang upload…');const r=await fetch('/.netlify/functions/upload-model',{method:'POST',headers:{Authorization:`Bearer ${adminToken}`},body:form}),t=await r.text(),d=t?JSON.parse(t):{};if(!r.ok)throw new Error(d.error||`HTTP ${r.status}`);msg($('uploadModelMessage'),'ok','Upload thành công.');await loadModelRegistry();if(activate)await loadAdminConfig()}catch(e){msg($('uploadModelMessage'),'error',e.message)}}
+async function uploadModel(){
+  const key=$('uploadModelKey').value;
+  const version=$('uploadModelVersion').value.trim();
+  const jsonFile=$('modelJsonFile').files[0];
+  const bins=Array.from($('modelBinFiles').files||[]);
+  const activate=$('activateAfterUpload').checked;
+
+  if(!version)return msg($('uploadModelMessage'),'error','Thiếu version');
+  if(!jsonFile)return msg($('uploadModelMessage'),'error','Thiếu model.json');
+  if(!bins.length)return msg($('uploadModelMessage'),'error','Thiếu file *.bin');
+
+  const allFiles=[jsonFile,...bins];
+  const totalBytes=allFiles.reduce((sum,f)=>sum+(f.size||0),0);
+  const totalMB=(totalBytes/1024/1024).toFixed(2);
+
+  const form=new FormData();
+  form.append('model_key',key);
+  form.append('model_version',version);
+  form.append('activate',activate?'true':'false');
+  form.append('model_json',jsonFile);
+  bins.forEach(f=>form.append('weight_files',f));
+
+  try{
+    msg($('uploadModelMessage'),'info',`Đang upload ${allFiles.length} file (${totalMB} MB)…`);
+
+    const r=await fetch('/.netlify/functions/upload-model',{
+      method:'POST',
+      headers:{Authorization:`Bearer ${adminToken}`},
+      body:form
+    });
+
+    const raw=await r.text();
+    let data={};
+    try{data=raw?JSON.parse(raw):{}}catch{data={raw}}
+
+    console.log('UPLOAD MODEL STATUS:',r.status,r.statusText);
+    console.log('UPLOAD MODEL RESPONSE:',data);
+
+    if(!r.ok){
+      const requestId=data.request_id?`\nRequest ID: ${data.request_id}`:'';
+      const stage=data.stage?`\nStage: ${data.stage}`:'';
+      const detail=data.detail||data.error||data.message||data.raw||r.statusText||'Không có chi tiết lỗi';
+      throw new Error(`Upload thất bại - HTTP ${r.status}${stage}${requestId}\n${detail}`);
+    }
+
+    msg($('uploadModelMessage'),'ok',`Upload thành công (${totalMB} MB).${data.request_id?` Request ID: ${data.request_id}`:''}`);
+    await loadModelRegistry();
+    if(activate)await loadAdminConfig();
+  }catch(e){
+    console.error('UPLOAD MODEL ERROR:',e);
+    msg($('uploadModelMessage'),'error',e.message||String(e));
+  }
+}
 async function loadModelRegistry(){const d=await adminApi('model-registry',{method:'GET'}),rows=d.items||[];$('modelRegistryRows').innerHTML=rows.length?rows.map(x=>`<tr><td>${MODEL_NAMES[x.model_key]||x.model_key}</td><td>${x.model_version}</td><td>${new Date(x.uploaded_at).toLocaleString('vi-VN')}</td><td class="mono-cell">${x.model_url}</td></tr>`).join(''):'<tr><td colspan="4">Chưa có model</td></tr>'}
 async function loadEmailStatus(){const s=await adminApi('admin-email-status',{method:'GET'});$('systemEmailSender').textContent=s.sender||'Chưa cấu hình';$('systemEmailStatus').textContent=s.configured?'Đã cấu hình':'Chưa cấu hình'}
 async function adminTestEmail(){try{msg($('adminEmailMessage'),'info','Đang gửi…');await adminApi('admin-email-status',{method:'POST',body:JSON.stringify({to:$('adminTestRecipient').value.trim()})});msg($('adminEmailMessage'),'ok','Đã gửi email test.')}catch(e){msg($('adminEmailMessage'),'error',e.message)}}
