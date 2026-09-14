@@ -89,3 +89,6 @@ Sau khi thêm Environment Variables, trigger deploy lại một lần.
 6. Ngồi sai quá ngưỡng → nghe cảnh báo.
 7. Tắt camera → nhận email báo cáo.
 8. Xem Dashboard.
+
+## Model upload v6.1 (signed direct upload)
+Model files are no longer posted through a Netlify Function. The admin UI first calls `prepare-model-upload`, uploads each file directly to Supabase Storage using signed upload tokens, then calls `finalize-model-upload`. This avoids Netlify request-body limits for TensorFlow.js model shards and returns structured errors with `stage` and `request_id`.

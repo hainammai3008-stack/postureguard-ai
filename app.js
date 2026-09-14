@@ -344,6 +344,26 @@ function renderAlerts(rows){$('alertRows').innerHTML=rows.length?rows.map(a=>`<t
 async function loadAdminConsole(){await Promise.all([loadAdminConfig(),loadModelRegistry(),loadEmailStatus()])}
 async function loadAdminConfig(){const c=await adminApi('system-config',{method:'GET'});$('globalModel').value=c.selected_model||'cnn';$('globalModelVersion').value=c.model_version||'v1';$('globalModelDisplay').textContent=`${MODEL_NAMES[c.selected_model]||c.selected_model} ${c.model_version||''}`;$('globalModelUrl').textContent=c.model_url||'--'}
 async function saveAdminConfig(){try{await adminApi('system-config',{method:'POST',body:JSON.stringify({selected_model:$('globalModel').value,model_version:$('globalModelVersion').value.trim()||'v1'})});msg($('systemMessage'),'ok','Đã activate model/version.');await loadAdminConfig()}catch(e){msg($('systemMessage'),'error',e.message)}}
+async function readApiResponse(response) {
+  const raw = await response.text();
+  let data = null;
+  try { data = raw ? JSON.parse(raw) : null; } catch { data = null; }
+  return { raw, data };
+}
+
+function apiErrorText(prefix, response, raw, data) {
+  const parts = [`${prefix} - HTTP ${response.status}`];
+  if (data?.stage) parts.push(`Stage: ${data.stage}`);
+  if (data?.request_id) parts.push(`Request ID: ${data.request_id}`);
+  if (data?.error) parts.push(String(data.error));
+  if (data?.detail && data.detail !== data.error) parts.push(String(data.detail));
+  if (!data && raw) parts.push(raw.slice(0, 1500));
+  if (!data && !raw) {
+    parts.push('Netlify trả response rỗng. Request có thể bị chặn trước khi Function chạy (thường do giới hạn request body/proxy).');
+  }
+  return parts.join('\n');
+}
+
 async function uploadModel(){
   const key=$('uploadModelKey').value;
   const version=$('uploadModelVersion').value.trim();
@@ -353,48 +373,91 @@ async function uploadModel(){
 
   if(!version)return msg($('uploadModelMessage'),'error','Thiếu version');
   if(!jsonFile)return msg($('uploadModelMessage'),'error','Thiếu model.json');
+  if(jsonFile.name!=='model.json')return msg($('uploadModelMessage'),'error','File JSON phải có tên model.json');
   if(!bins.length)return msg($('uploadModelMessage'),'error','Thiếu file *.bin');
+  if(bins.some(f=>!f.name.endsWith('.bin')))return msg($('uploadModelMessage'),'error','Weights chỉ được chọn file *.bin');
 
   const allFiles=[jsonFile,...bins];
-  const totalBytes=allFiles.reduce((sum,f)=>sum+(f.size||0),0);
-  const totalMB=(totalBytes/1024/1024).toFixed(2);
-
-  const form=new FormData();
-  form.append('model_key',key);
-  form.append('model_version',version);
-  form.append('activate',activate?'true':'false');
-  form.append('model_json',jsonFile);
-  bins.forEach(f=>form.append('weight_files',f));
+  const totalMb=allFiles.reduce((n,f)=>n+f.size,0)/1024/1024;
 
   try{
-    msg($('uploadModelMessage'),'info',`Đang upload ${allFiles.length} file (${totalMB} MB)…`);
+    msg($('uploadModelMessage'),'info',`Chuẩn bị upload ${allFiles.length} file (${totalMb.toFixed(2)} MB)…`);
 
-    const r=await fetch('/.netlify/functions/upload-model',{
+    // Bước 1: chỉ gửi metadata nhỏ qua Netlify Function để lấy signed upload token.
+    const prepareResponse=await fetch('/.netlify/functions/prepare-model-upload',{
       method:'POST',
-      headers:{Authorization:`Bearer ${adminToken}`},
-      body:form
+      headers:{
+        'Content-Type':'application/json',
+        Authorization:`Bearer ${adminToken}`
+      },
+      body:JSON.stringify({
+        model_key:key,
+        model_version:version,
+        files:allFiles.map(f=>({name:f.name,size:f.size,type:f.type||''}))
+      })
     });
-
-    const raw=await r.text();
-    let data={};
-    try{data=raw?JSON.parse(raw):{}}catch{data={raw}}
-
-    console.log('UPLOAD MODEL STATUS:',r.status,r.statusText);
-    console.log('UPLOAD MODEL RESPONSE:',data);
-
-    if(!r.ok){
-      const requestId=data.request_id?`\nRequest ID: ${data.request_id}`:'';
-      const stage=data.stage?`\nStage: ${data.stage}`:'';
-      const detail=data.detail||data.error||data.message||data.raw||r.statusText||'Không có chi tiết lỗi';
-      throw new Error(`Upload thất bại - HTTP ${r.status}${stage}${requestId}\n${detail}`);
+    const prepared=await readApiResponse(prepareResponse);
+    console.log('prepare-model-upload:', prepareResponse.status, prepared.raw);
+    if(!prepareResponse.ok){
+      throw new Error(apiErrorText('Không chuẩn bị được upload',prepareResponse,prepared.raw,prepared.data));
     }
 
-    msg($('uploadModelMessage'),'ok',`Upload thành công (${totalMB} MB).${data.request_id?` Request ID: ${data.request_id}`:''}`);
+    const bucket=prepared.data?.bucket;
+    const uploadItems=prepared.data?.uploads||[];
+    if(!bucket||uploadItems.length!==allFiles.length){
+      throw new Error('Prepare upload trả dữ liệu không đầy đủ.');
+    }
+
+    // Bước 2: upload từng file trực tiếp Browser -> Supabase Storage.
+    // Model ~9MB không còn đi xuyên qua Netlify Function nên tránh giới hạn request body.
+    const uploaded=[];
+    for(let i=0;i<allFiles.length;i++){
+      const file=allFiles[i];
+      const item=uploadItems.find(x=>x.name===file.name);
+      if(!item?.token||!item?.path){
+        throw new Error(`Không nhận được signed token cho ${file.name}`);
+      }
+      msg($('uploadModelMessage'),'info',`Đang upload ${i+1}/${allFiles.length}: ${file.name} (${(file.size/1024/1024).toFixed(2)} MB)…`);
+      const { error }=await supabase.storage
+        .from(bucket)
+        .uploadToSignedUrl(item.path,item.token,file,{
+          contentType:item.content_type||file.type||'application/octet-stream',
+          cacheControl:'3600'
+        });
+      if(error){
+        console.error('Supabase upload error:', file.name, error);
+        throw new Error(`Supabase Storage lỗi khi upload ${file.name}: ${error.message||String(error)}`);
+      }
+      uploaded.push(file.name);
+    }
+
+    // Bước 3: Netlify Function chỉ ghi model_registry/system_config.
+    msg($('uploadModelMessage'),'info','Upload file xong. Đang đăng ký model…');
+    const finalizeResponse=await fetch('/.netlify/functions/finalize-model-upload',{
+      method:'POST',
+      headers:{
+        'Content-Type':'application/json',
+        Authorization:`Bearer ${adminToken}`
+      },
+      body:JSON.stringify({
+        model_key:key,
+        model_version:version,
+        activate,
+        uploaded_files:uploaded
+      })
+    });
+    const finalized=await readApiResponse(finalizeResponse);
+    console.log('finalize-model-upload:', finalizeResponse.status, finalized.raw);
+    if(!finalizeResponse.ok){
+      throw new Error(apiErrorText('Đăng ký model thất bại',finalizeResponse,finalized.raw,finalized.data));
+    }
+
+    msg($('uploadModelMessage'),'ok',`Upload thành công ${allFiles.length} file (${totalMb.toFixed(2)} MB).${finalized.data?.request_id?`\nRequest ID: ${finalized.data.request_id}`:''}`);
     await loadModelRegistry();
     if(activate)await loadAdminConfig();
   }catch(e){
     console.error('UPLOAD MODEL ERROR:',e);
-    msg($('uploadModelMessage'),'error',e.message||String(e));
+    msg($('uploadModelMessage'),'error',e?.message||String(e));
   }
 }
 async function loadModelRegistry(){const d=await adminApi('model-registry',{method:'GET'}),rows=d.items||[];$('modelRegistryRows').innerHTML=rows.length?rows.map(x=>`<tr><td>${MODEL_NAMES[x.model_key]||x.model_key}</td><td>${x.model_version}</td><td>${new Date(x.uploaded_at).toLocaleString('vi-VN')}</td><td class="mono-cell">${x.model_url}</td></tr>`).join(''):'<tr><td colspan="4">Chưa có model</td></tr>'}
