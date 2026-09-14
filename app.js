@@ -43,6 +43,9 @@ let sessionId = null;
 let currentEpisode = null;
 let ratioChart = null;
 let postureChart = null;
+let adminTestModel = null;
+let adminTestModelCacheKey = null;
+let adminTestPreviewUrl = null;
 
 function msg(el, kind, text) {
   if (!el) return;
@@ -341,7 +344,128 @@ function setState(kind,text){$('postureState').textContent=text;$('postureState'
 async function loadDashboard(){try{const data=await userApi('dashboard?days=7',{method:'GET'}),monitored=Number(data.monitored_seconds||0),bad=Number(data.bad_seconds||0),correct=monitored>0?Math.max(0,(monitored-bad)/monitored*100):0;$('kpiMonitor').textContent=`${Math.round(monitored/60)} phút`;$('kpiBad').textContent=`${Math.round(bad/60)} phút`;$('kpiCorrect').textContent=monitored?`${correct.toFixed(1)}%`:'--';$('kpiAlerts').textContent=data.alerts?.length||0;renderCharts(monitored,bad,data.bad_by_posture||{});renderAlerts(data.alerts||[])}catch(e){console.error(e)}}
 function renderCharts(monitored,bad,byPosture){if(ratioChart)ratioChart.destroy();if(postureChart)postureChart.destroy();ratioChart=new Chart($('ratioChart'),{type:'doughnut',data:{labels:['Ngồi đúng','Ngồi sai'],datasets:[{data:[Math.max(0,monitored-bad),bad],backgroundColor:['#36d399','#ff6b6b']}]},options:{plugins:{legend:{labels:{color:'#dbe5ff'}}}}});const keys=['leaning_left','leaning_right','leaning_backward'];postureChart=new Chart($('postureChart'),{type:'bar',data:{labels:keys.map(k=>DISPLAY[k]),datasets:[{label:'Phút',data:keys.map(k=>(byPosture[k]||0)/60),backgroundColor:'#6ea8fe'}]},options:{scales:{x:{ticks:{color:'#dbe5ff'}},y:{ticks:{color:'#dbe5ff'}}},plugins:{legend:{labels:{color:'#dbe5ff'}}}}})}
 function renderAlerts(rows){$('alertRows').innerHTML=rows.length?rows.map(a=>`<tr><td>${new Date(a.sent_at).toLocaleString('vi-VN')}</td><td>${DISPLAY[a.posture]||a.posture}</td><td>${a.duration_seconds}s</td><td>${MODEL_NAMES[a.model_key]||a.model_key||''}</td><td>${a.channel}</td></tr>`).join(''):'<tr><td colspan="5">Chưa có cảnh báo</td></tr>'}
-async function loadAdminConsole(){await Promise.all([loadAdminConfig(),loadModelRegistry(),loadEmailStatus()])}
+async function loadAdminConsole(){
+  await Promise.all([loadAdminConfig(),loadModelRegistry(),loadEmailStatus()]);
+  updateAdminTfjsInfo();
+}
+
+function updateAdminTfjsInfo(){
+  const version=window.tf?.version?.tfjs||'--';
+  let backend='--';
+  try{backend=window.tf?.getBackend?.()||'--'}catch{}
+  if($('adminTfjsInfo'))$('adminTfjsInfo').textContent=`${version} / ${backend}`;
+}
+
+function disposeTensorOutput(out){
+  if(!out)return;
+  if(Array.isArray(out)){out.forEach(t=>t?.dispose?.());return;}
+  if(typeof out.dispose==='function'){out.dispose();return;}
+  if(typeof out==='object')Object.values(out).forEach(t=>t?.dispose?.());
+}
+
+function firstTensorFromOutput(out){
+  if(!out)return null;
+  if(Array.isArray(out))return out[0]||null;
+  if(typeof out.data==='function')return out;
+  if(typeof out==='object')return Object.values(out).find(v=>v&&typeof v.data==='function')||null;
+  return null;
+}
+
+async function loadAdminTestModel(force=false){
+  const c=await adminApi('system-config',{method:'GET'});
+  const key=c.selected_model||'cnn';
+  const version=c.model_version||'v1';
+  const url=c.model_url;
+  if(!url)throw new Error('Chưa có model active. Hãy upload và activate model trước.');
+  const cacheKey=`${key}:${version}:${url}`;
+  if(!force&&adminTestModel&&adminTestModelCacheKey===cacheKey){
+    $('adminTestModelName').textContent=`${MODEL_NAMES[key]||key} ${version}`;
+    return adminTestModel;
+  }
+  msg($('adminImageTestMessage'),'info',`Đang tải ${MODEL_NAMES[key]||key} ${version}…`);
+  if(adminTestModel?.dispose)adminTestModel.dispose();
+  adminTestModel=null;
+  const sep=url.includes('?')?'&':'?';
+  adminTestModel=await tf.loadGraphModel(`${url}${sep}v=${encodeURIComponent(version)}&t=${Date.now()}`);
+  adminTestModelCacheKey=cacheKey;
+  $('adminTestModelName').textContent=`${MODEL_NAMES[key]||key} ${version}`;
+  updateAdminTfjsInfo();
+  msg($('adminImageTestMessage'),'ok',`Đã tải model ${MODEL_NAMES[key]||key} ${version}.`);
+  return adminTestModel;
+}
+
+function previewAdminTestImage(){
+  const file=$('adminTestImageFile').files?.[0];
+  if(adminTestPreviewUrl){URL.revokeObjectURL(adminTestPreviewUrl);adminTestPreviewUrl=null;}
+  $('adminTestPrediction').textContent='--';
+  $('adminTestConfidence').textContent='--';
+  $('adminTestProbabilities').innerHTML='<div class="hint">Chưa có kết quả.</div>';
+  if(!file){
+    $('adminTestPreview').hidden=true;
+    $('adminTestPreview').removeAttribute('src');
+    $('adminTestPreviewEmpty').hidden=false;
+    return;
+  }
+  if(!file.type.startsWith('image/')){
+    msg($('adminImageTestMessage'),'error','Vui lòng chọn file hình ảnh.');
+    return;
+  }
+  adminTestPreviewUrl=URL.createObjectURL(file);
+  $('adminTestPreview').src=adminTestPreviewUrl;
+  $('adminTestPreview').hidden=false;
+  $('adminTestPreviewEmpty').hidden=true;
+  msg($('adminImageTestMessage'),'info',`Đã chọn ${file.name}. Bấm “Detect tư thế” để chạy model.`);
+}
+
+async function ensureImageLoaded(img){
+  if(img.complete&&img.naturalWidth>0)return;
+  await new Promise((resolve,reject)=>{
+    img.addEventListener('load',resolve,{once:true});
+    img.addEventListener('error',()=>reject(new Error('Không đọc được ảnh đã chọn.')),{once:true});
+  });
+}
+
+async function runAdminImageTest(){
+  const file=$('adminTestImageFile').files?.[0];
+  if(!file)return msg($('adminImageTestMessage'),'error','Hãy chọn một ảnh trước.');
+  const btn=$('adminRunImageTestBtn');
+  btn.disabled=true;
+  try{
+    msg($('adminImageTestMessage'),'info','Đang tải model và phân tích ảnh…');
+    const testModel=await loadAdminTestModel(false);
+    const img=$('adminTestPreview');
+    await ensureImageLoaded(img);
+    const input=preprocess(img);
+    let out=null;
+    try{
+      out=await testModel.executeAsync(input);
+      const tensor=firstTensorFromOutput(out);
+      if(!tensor)throw new Error('Model không trả về tensor kết quả.');
+      const probs=Array.from(await tensor.data());
+      if(probs.length<CLASS_NAMES.length)throw new Error(`Output model chỉ có ${probs.length} giá trị, kỳ vọng ${CLASS_NAMES.length}.`);
+      const max=Math.max(...probs);
+      const idx=probs.indexOf(max);
+      const raw=CLASS_NAMES[idx]||'unknown';
+      const shown=max>=MIN_CONFIDENCE?raw:'unknown';
+      $('adminTestPrediction').textContent=DISPLAY[shown]||shown;
+      $('adminTestConfidence').textContent=`${(max*100).toFixed(2)}%`;
+      $('adminTestProbabilities').innerHTML=CLASS_NAMES.map((name,i)=>{
+        const p=Number(probs[i]||0)*100;
+        return `<div class="prob-row"><div class="prob-label"><span>${DISPLAY[name]||name}</span><strong>${p.toFixed(2)}%</strong></div><div class="prob-track"><div class="prob-fill" style="width:${Math.max(0,Math.min(100,p))}%"></div></div></div>`;
+      }).join('');
+      msg($('adminImageTestMessage'),shown==='unknown'?'info':'ok',shown==='unknown'?`Độ tin cậy cao nhất ${max.toFixed(3)} thấp hơn ngưỡng ${MIN_CONFIDENCE}.`:`Detect thành công: ${DISPLAY[raw]||raw} (${(max*100).toFixed(2)}%).`);
+    }finally{
+      input.dispose();
+      disposeTensorOutput(out);
+    }
+  }catch(e){
+    console.error('ADMIN IMAGE TEST ERROR:',e);
+    msg($('adminImageTestMessage'),'error',`Test model thất bại: ${e?.message||String(e)}`);
+  }finally{
+    btn.disabled=false;
+  }
+}
+
 async function loadAdminConfig(){const c=await adminApi('system-config',{method:'GET'});$('globalModel').value=c.selected_model||'cnn';$('globalModelVersion').value=c.model_version||'v1';$('globalModelDisplay').textContent=`${MODEL_NAMES[c.selected_model]||c.selected_model} ${c.model_version||''}`;$('globalModelUrl').textContent=c.model_url||'--'}
 async function saveAdminConfig(){try{await adminApi('system-config',{method:'POST',body:JSON.stringify({selected_model:$('globalModel').value,model_version:$('globalModelVersion').value.trim()||'v1'})});msg($('systemMessage'),'ok','Đã activate model/version.');await loadAdminConfig()}catch(e){msg($('systemMessage'),'error',e.message)}}
 async function readApiResponse(response) {
@@ -503,6 +627,9 @@ $('refreshDashboard').addEventListener('click', loadDashboard);
 $('saveSystemConfig').addEventListener('click', saveAdminConfig);
 $('uploadModelBtn').addEventListener('click', uploadModel);
 $('adminTestEmailBtn').addEventListener('click', adminTestEmail);
+$('adminTestImageFile').addEventListener('change', previewAdminTestImage);
+$('adminRunImageTestBtn').addEventListener('click', runAdminImageTest);
+$('adminReloadTestModelBtn').addEventListener('click', async()=>{try{await loadAdminTestModel(true)}catch(e){msg($('adminImageTestMessage'),'error',`Tải model thất bại: ${e.message}`)}});
 
 init().catch(err => {
   console.error(err);

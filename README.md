@@ -92,3 +92,11 @@ Sau khi thêm Environment Variables, trigger deploy lại một lần.
 
 ## Model upload v6.1 (signed direct upload)
 Model files are no longer posted through a Netlify Function. The admin UI first calls `prepare-model-upload`, uploads each file directly to Supabase Storage using signed upload tokens, then calls `finalize-model-upload`. This avoids Netlify request-body limits for TensorFlow.js model shards and returns structured errors with `stage` and `request_id`.
+
+
+## v6.2 - Super Admin test model bằng ảnh
+- Thêm tab **🧪 Test mô hình** trong Super Admin.
+- Upload ảnh từ máy và chạy inference trực tiếp bằng TensorFlow.js trên browser.
+- Ảnh test không gửi lên server.
+- Hiển thị model/version active, TensorFlow.js/backend, lớp dự đoán, confidence và xác suất 4 lớp.
+- Dùng cùng preprocessing 224x224 RGB float32 như camera realtime; không chia 255 vì preprocessing MobileNetV2 nằm trong graph hiện tại.

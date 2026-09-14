@@ -233,6 +233,7 @@
 
   <nav class="tabs">
     <button class="tab active" data-admin-tab="models">🧠 Model AI</button>
+    <button class="tab" data-admin-tab="test">🧪 Test mô hình</button>
     <button class="tab" data-admin-tab="email">✉️ Email hệ thống</button>
   </nav>
 
@@ -282,6 +283,52 @@
             <thead><tr><th>Model</th><th>Version</th><th>Upload lúc</th><th>URL</th></tr></thead>
             <tbody id="modelRegistryRows"><tr><td colspan="4">Chưa có dữ liệu</td></tr></tbody>
           </table>
+        </div>
+      </div>
+    </section>
+
+
+    <section id="admin-tab-test" class="panel">
+      <div class="grid two">
+        <div class="card settings-card">
+          <div class="card-head">
+            <div>
+              <h2>Test mô hình bằng hình ảnh</h2>
+              <p class="hint">Upload một ảnh tư thế để chạy inference trực tiếp trên trình duyệt. Ảnh không được gửi lên server.</p>
+            </div>
+          </div>
+
+          <label>Ảnh cần kiểm tra
+            <input id="adminTestImageFile" type="file" accept="image/*" />
+          </label>
+
+          <div class="admin-test-preview-wrap">
+            <img id="adminTestPreview" alt="Ảnh test" hidden />
+            <div id="adminTestPreviewEmpty" class="admin-test-empty">Chưa chọn ảnh</div>
+          </div>
+
+          <div class="actions admin-test-actions">
+            <button id="adminRunImageTestBtn" class="primary">Detect tư thế</button>
+            <button id="adminReloadTestModelBtn" class="secondary">Tải lại model active</button>
+          </div>
+          <div id="adminImageTestMessage" class="message info">Chọn ảnh rồi bấm “Detect tư thế”.</div>
+        </div>
+
+        <div class="card settings-card">
+          <h2>Kết quả detect</h2>
+          <div class="metric-row"><span>Model</span><strong id="adminTestModelName">--</strong></div>
+          <div class="metric-row"><span>TensorFlow.js</span><strong id="adminTfjsInfo">--</strong></div>
+          <div class="metric-row"><span>Tư thế dự đoán</span><strong id="adminTestPrediction">--</strong></div>
+          <div class="metric-row"><span>Độ tin cậy</span><strong id="adminTestConfidence">--</strong></div>
+          <div class="metric-row"><span>Input</span><strong>224 × 224 × 3</strong></div>
+
+          <div class="admin-probabilities">
+            <h3>Xác suất theo lớp</h3>
+            <div id="adminTestProbabilities" class="prob-list">
+              <div class="hint">Chưa có kết quả.</div>
+            </div>
+          </div>
+          <p class="hint">Thứ tự lớp: leaning_backward, leaning_left, leaning_right, upright. Ngưỡng hiển thị “Chưa xác định”: 65%.</p>
         </div>
       </div>
     </section>
