@@ -110,3 +110,13 @@ Model files are no longer posted through a Netlify Function. The admin UI first 
 ## v6.7 - Model được hỗ trợ
 
 Hệ thống chỉ hỗ trợ 4 model: MobileNetV2, ResNet50, DenseNet121, EfficientNet-B0. Với DB đã triển khai bản cũ, chạy `supabase/postureguard_migrate_models_v6_7.sql`.
+
+## v6.8 - Realtime camera pipeline
+Realtime camera inference was updated to reduce jitter and improve webcam behavior:
+- Center crop 90% of the square person region before inference.
+- Resize cropped frame to 224x224.
+- Run model on raw RGB float input (no extra /255 normalization).
+- Average class probabilities across the latest 10 frames.
+- Apply confidence threshold 0.65 after probability averaging.
+- Run inference every 250 ms (~4 FPS).
+- Uploaded-image admin test remains unchanged and uses the full uploaded image.

@@ -3,13 +3,14 @@ const { createClient } = window.supabase;
 const supabase = createClient(CFG.SUPABASE_URL, CFG.SUPABASE_ANON_KEY);
 
 const CLASS_NAMES = ['leaning_backward','leaning_left','leaning_right','upright'];
-const APP_VERSION='6.7.0';
+const APP_VERSION='6.8.0';
 const ALERT_SPEECH={leaning_left:'Please sit straight. You are leaning left.',leaning_right:'Please sit straight. You are leaning right.',leaning_backward:'Please sit straight. You are leaning backward.'};
 console.log('[PostureGuard] app version', APP_VERSION);
 const CORRECT_CLASS = 'upright';
 const MIN_CONFIDENCE = 0.65;
-const SMOOTHING_FRAMES = 8;
-const PREDICT_INTERVAL_MS = 600;
+const PROBABILITY_AVG_FRAMES = 10;
+const PREDICT_INTERVAL_MS = 250;
+const CENTER_CROP_SCALE = 0.90;
 
 const MODEL_NAMES = {
   mobilenetv2:'MobileNetV2',
@@ -39,7 +40,7 @@ let activeModelCacheKey = null;
 let stream = null;
 let cameraRunning = false;
 let predictLoopToken = 0;
-let history = [];
+let probabilityHistory = [];
 let badStartAt = null;
 let lastAlertAt = 0;
 let sessionId = null;
@@ -335,11 +336,60 @@ async function saveSettings(){const next={student_name:$('studentName').value.tr
 async function loadPublicConfig(){systemConfig=await userApi('public-config',{method:'GET'})}
 async function loadSelectedModel(force=false){const key=systemConfig?.selected_model||'mobilenetv2',version=systemConfig?.model_version||'v1',url=systemConfig?.model_url;if(!url){$('modelBadge').textContent='Chưa có model active';$('modelBadge').className='badge badge-bad';return}const cacheKey=`${key}:${version}:${url}`;if(!force&&model&&activeModelCacheKey===cacheKey)return;$('modelBadge').textContent=`Đang tải ${MODEL_NAMES[key]} ${version}…`;$('modelBadge').className='badge badge-warn';if(model&&model.dispose)model.dispose();model=null;try{const sep=url.includes('?')?'&':'?';model=await tf.loadGraphModel(`${url}${sep}v=${encodeURIComponent(version)}&t=${encodeURIComponent(systemConfig.updated_at||Date.now())}`);activeModelCacheKey=cacheKey;$('modelBadge').textContent=`${MODEL_NAMES[key]} ${version}`;$('modelBadge').className='badge badge-ok';$('activeModelName').textContent=`${MODEL_NAMES[key]} ${version}`}catch(e){console.error(e);$('modelBadge').textContent='Lỗi tải model';$('modelBadge').className='badge badge-bad'}}
 function preprocess(source){return tf.tidy(()=>tf.browser.fromPixels(source,3).resizeBilinear([224,224]).toFloat().expandDims(0))}
-async function infer(source){if(!model)throw new Error('Model chưa sẵn sàng');const input=preprocess(source);let out;try{out=await model.executeAsync(input);const tensor=Array.isArray(out)?out[0]:out,probs=Array.from(await tensor.data());if(Array.isArray(out))out.forEach(t=>t.dispose());else out.dispose();const idx=probs.indexOf(Math.max(...probs)),confidence=probs[idx]||0,raw=CLASS_NAMES[idx]||'unknown';return{label:confidence>=MIN_CONFIDENCE?raw:'unknown',confidence,probs}}finally{input.dispose()}}
-function stableLabel(label){history.push(label);if(history.length>SMOOTHING_FRAMES)history.shift();const valid=history.filter(x=>x!=='unknown');if(!valid.length)return'unknown';const c={};valid.forEach(x=>c[x]=(c[x]||0)+1);return Object.entries(c).sort((a,b)=>b[1]-a[1])[0][0]}
-async function startCamera(){if(!model)return alert('Model chưa sẵn sàng');stream=await navigator.mediaDevices.getUserMedia({video:{facingMode:'user',width:{ideal:960},height:{ideal:720}},audio:false});$('video').srcObject=stream;cameraRunning=true;history=[];badStartAt=null;lastAlertAt=0;currentEpisode=null;sessionId=crypto.randomUUID();await userApi('session',{method:'POST',body:JSON.stringify({action:'start',session_id:sessionId,model_key:systemConfig.selected_model})});$('startCamera').disabled=true;$('stopCamera').disabled=false;$('emailReportState').textContent='Chưa gửi';const token=++predictLoopToken;predictLoop(token)}
-async function stopCamera(){cameraRunning=false;++predictLoopToken;if(currentEpisode)await closeEpisode(Date.now());if(stream)stream.getTracks().forEach(t=>t.stop());stream=null;$('video').srcObject=null;$('startCamera').disabled=false;$('stopCamera').disabled=true;if(sessionId){await userApi('session',{method:'POST',body:JSON.stringify({action:'stop',session_id:sessionId})});if(profile?.email_enabled){try{$('emailReportState').textContent='Đang gửi…';await userApi('send-report',{method:'POST',body:JSON.stringify({session_id:sessionId})});$('emailReportState').textContent='Đã gửi'}catch(e){console.error(e);$('emailReportState').textContent='Lỗi gửi'}}}sessionId=null;setState('idle','Đã tắt camera')}
-async function predictLoop(token){while(cameraRunning&&token===predictLoopToken){if($('video').readyState>=2){try{const r=await infer($('video'));await handlePosture(stableLabel(r.label),r.confidence)}catch(e){console.error(e)}}await sleep(PREDICT_INTERVAL_MS)}}
+
+// Realtime camera pipeline:
+// webcam frame -> center crop -> resize 224x224 -> model -> probabilities
+function preprocessCameraFrame(source){
+  return tf.tidy(()=>{
+    const pixels=tf.browser.fromPixels(source,3);
+    const [h,w]=pixels.shape;
+    const side=Math.max(1,Math.floor(Math.min(h,w)*CENTER_CROP_SCALE));
+    const y=Math.max(0,Math.floor((h-side)/2));
+    const x=Math.max(0,Math.floor((w-side)/2));
+    const cropped=pixels.slice([y,x,0],[side,side,3]);
+    return cropped.resizeBilinear([224,224]).toFloat().expandDims(0);
+  });
+}
+
+async function inferCamera(source){
+  if(!model)throw new Error('Model chưa sẵn sàng');
+  const input=preprocessCameraFrame(source);
+  let out;
+  try{
+    out=await model.executeAsync(input);
+    const tensor=Array.isArray(out)?out[0]:out;
+    const probs=Array.from(await tensor.data());
+    if(Array.isArray(out))out.forEach(t=>t.dispose());else out.dispose();
+    return probs;
+  }finally{
+    input.dispose();
+  }
+}
+
+function averageProbabilities(probs){
+  probabilityHistory.push(probs.map(Number));
+  if(probabilityHistory.length>PROBABILITY_AVG_FRAMES) probabilityHistory.shift();
+
+  const avg=new Array(CLASS_NAMES.length).fill(0);
+  for(const frame of probabilityHistory){
+    for(let i=0;i<avg.length;i++) avg[i]+=Number(frame[i]||0);
+  }
+  for(let i=0;i<avg.length;i++) avg[i]/=probabilityHistory.length;
+
+  const confidence=Math.max(...avg);
+  const idx=avg.indexOf(confidence);
+  const raw=CLASS_NAMES[idx]||'unknown';
+  return {
+    label: confidence>=MIN_CONFIDENCE?raw:'unknown',
+    confidence,
+    probs:avg,
+    frames:probabilityHistory.length
+  };
+}
+
+async function startCamera(){if(!model)return alert('Model chưa sẵn sàng');stream=await navigator.mediaDevices.getUserMedia({video:{facingMode:'user',width:{ideal:960},height:{ideal:720}},audio:false});$('video').srcObject=stream;cameraRunning=true;probabilityHistory=[];badStartAt=null;lastAlertAt=0;currentEpisode=null;sessionId=crypto.randomUUID();await userApi('session',{method:'POST',body:JSON.stringify({action:'start',session_id:sessionId,model_key:systemConfig.selected_model})});$('startCamera').disabled=true;$('stopCamera').disabled=false;$('emailReportState').textContent='Chưa gửi';const token=++predictLoopToken;predictLoop(token)}
+async function stopCamera(){cameraRunning=false;++predictLoopToken;probabilityHistory=[];if(currentEpisode)await closeEpisode(Date.now());if(stream)stream.getTracks().forEach(t=>t.stop());stream=null;$('video').srcObject=null;$('startCamera').disabled=false;$('stopCamera').disabled=true;if(sessionId){await userApi('session',{method:'POST',body:JSON.stringify({action:'stop',session_id:sessionId})});if(profile?.email_enabled){try{$('emailReportState').textContent='Đang gửi…';await userApi('send-report',{method:'POST',body:JSON.stringify({session_id:sessionId})});$('emailReportState').textContent='Đã gửi'}catch(e){console.error(e);$('emailReportState').textContent='Lỗi gửi'}}}sessionId=null;setState('idle','Đã tắt camera')}
+async function predictLoop(token){while(cameraRunning&&token===predictLoopToken){if($('video').readyState>=2){try{const rawProbs=await inferCamera($('video'));const r=averageProbabilities(rawProbs);await handlePosture(r.label,r.confidence)}catch(e){console.error(e)}}await sleep(PREDICT_INTERVAL_MS)}}
 async function handlePosture(label,confidence){const now=Date.now();$('confidence').textContent=`${(confidence*100).toFixed(1)}%`;if(!currentEpisode||currentEpisode.label!==label){if(currentEpisode)await closeEpisode(now);currentEpisode={label,startedAt:now,maxConfidence:confidence}}else currentEpisode.maxConfidence=Math.max(currentEpisode.maxConfidence,confidence);if(label===CORRECT_CLASS){badStartAt=null;lastAlertAt=0;$('badDuration').textContent='0.0s';$('localAlertState').textContent='Chưa';setState('good','✅ Tư thế đúng');msg($('cameraMessage'),'ok','Bạn đang ngồi đúng tư thế.');return}if(label==='unknown'){setState('unknown','⚠️ Chưa xác định');return}if(!badStartAt){badStartAt=now;lastAlertAt=0}const seconds=(now-badStartAt)/1000;$('badDuration').textContent=`${seconds.toFixed(1)}s`;setState('bad',`❌ ${DISPLAY[label]}`);msg($('cameraMessage'),'error',`Phát hiện ${DISPLAY[label].toLowerCase()} trong ${seconds.toFixed(0)} giây.`);const alertSeconds=Math.max(1,Number(profile.local_alert_seconds||10));const alertMs=alertSeconds*1000;if(seconds>=alertSeconds&&(lastAlertAt===0||now-lastAlertAt>=alertMs)){lastAlertAt=now;$('localAlertState').textContent=`Đã cảnh báo • lặp mỗi ${alertSeconds}s`;try{await speak(ALERT_SPEECH[label] || 'Please sit straight and correct your posture.')}catch(e){console.error('Không phát được cảnh báo âm thanh:',e)}try{await userApi('alert-log',{method:'POST',body:JSON.stringify({session_id:sessionId,posture:label,duration_seconds:Math.round(seconds),model_key:systemConfig.selected_model,channel:'audio'})})}catch(e){console.error('Không ghi được alert-log:',e)}}}
 async function closeEpisode(endedAt){const ep=currentEpisode;currentEpisode=null;if(!ep||!sessionId||ep.label==='unknown')return;await userApi('event',{method:'POST',body:JSON.stringify({session_id:sessionId,posture:ep.label,confidence:ep.maxConfidence,started_at:new Date(ep.startedAt).toISOString(),duration_seconds:Math.max(1,Math.round((endedAt-ep.startedAt)/1000)),model_key:systemConfig.selected_model})})}
 function getEnglishVoice(){
