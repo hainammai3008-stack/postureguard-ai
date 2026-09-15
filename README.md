@@ -156,3 +156,9 @@ Realtime camera pipeline now uses MoveNet SinglePose Lightning to detect the sea
 - Hip keypoints are optional and only used for left/right pose assist when reliable.
 - Bounding box can be created from 3 reliable upper-body keypoints.
 - Overlay reports `upper body detected • hip partially hidden` instead of generic low quality.
+
+
+## v6.15 Beautiful Email Report
+- Redesigned session report email with responsive HTML cards, progress bar and detailed posture table.
+- Durations are shown in minutes + seconds instead of rounding short events to 0 minutes.
+- Keeps plain-text email fallback.
