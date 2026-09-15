@@ -6,6 +6,7 @@
   <title>PostureGuard AI</title>
   <link rel="stylesheet" href="/styles.css" />
   <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs@4.22.0/dist/tf.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/@tensorflow-models/pose-detection@2.1.3/dist/pose-detection.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.6/dist/chart.umd.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 </head>
@@ -143,8 +144,9 @@
           </div>
           <div class="video-wrap">
             <video id="video" autoplay playsinline muted></video>
+            <canvas id="poseOverlay" class="pose-overlay"></canvas>
           </div>
-          <p class="hint">AI chạy trực tiếp trên trình duyệt. Ảnh camera không tải lên server.</p>
+          <p class="hint">MoveNet tự định vị người rồi crop theo vị trí thực tế trước khi phân loại tư thế. Nếu không phát hiện được người, hệ thống tạm dùng toàn bộ frame.</p>
         </div>
 
         <div class="card">

@@ -125,3 +125,7 @@ Realtime camera inference was updated to reduce jitter and improve webcam behavi
 - Super Admin có thể cấu hình `confidence_threshold` (mặc định 0.50) tại Model AI.
 - Giá trị áp dụng cho cả camera realtime và chức năng test ảnh trong Admin.
 - Với database đã tồn tại, chạy `supabase/postureguard_migrate_confidence_v6_10.sql` một lần.
+
+## v6.11 - MoveNet person tracking for realtime
+
+Realtime camera pipeline now uses MoveNet SinglePose Lightning to detect the seated student's upper-body keypoints, builds a padded square person bounding box, and crops dynamically before the active posture classifier. Pose runs every 500 ms while posture classification remains around every 250 ms. The last valid box is reused for up to 2 seconds; if pose detection is unavailable temporarily, classification falls back to the full webcam frame. A green overlay box shows the detected crop region. No database migration is required for this version.
