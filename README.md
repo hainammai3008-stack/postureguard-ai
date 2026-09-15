@@ -141,9 +141,18 @@ Realtime camera pipeline now uses MoveNet SinglePose Lightning to detect the sea
 - No database migration is required from v6.11.
 
 
-## v6.13 Visible pose bounding box
+## v6.14 Visible pose bounding box
 - Pose overlay is forced above video with z-index.
 - Green box: current MoveNet detection.
 - Yellow box: last valid box reused within 2-second TTL.
 - Red status: person not detected.
 - Status badge is not mirrored, so text remains readable.
+
+
+## v6.14 — Upper-body friendly pose quality
+- Pose quality no longer requires hips to be visible.
+- Minimum pose keypoint score reduced to 0.20; core head/shoulder score to 0.25.
+- Head + at least one shoulder is enough to continue posture classification.
+- Hip keypoints are optional and only used for left/right pose assist when reliable.
+- Bounding box can be created from 3 reliable upper-body keypoints.
+- Overlay reports `upper body detected • hip partially hidden` instead of generic low quality.
