@@ -1,0 +1,115 @@
+# Ngữ cảnh dự án PostureGuard AI
+
+Dự án AI nhận diện tư thế ngồi qua webcam, có quản trị mô hình và cảnh báo âm thanh.
+
+## Nguồn ngữ cảnh
+
+- Cuộc trò chuyện ChatGPT: Phát triển AI tư thế ngồi.
+- ID: 6aa26782-4a8c-83ec-9e52-792a225c6a4e.
+- Dự án ChatGPT gốc: Posture Guard AI - Hưng Nam Đạt.
+- Ngày chuyển ngữ cảnh: 2026-09-15.
+- Tóm tắt này dựa trên các trao đổi gần nhất đã đọc, không phải bản xuất toàn bộ lịch sử.
+
+## Kiến trúc đã thống nhất
+
+- Frontend triển khai trên Netlify; Netlify Functions xử lý các tác vụ backend.
+- Supabase lưu dữ liệu, cấu hình, model registry và tệp mô hình trong Storage.
+- TensorFlow.js chạy suy luận tại trình duyệt; ảnh camera và ảnh test không gửi lên server theo thiết kế đã trao đổi.
+- Model Keras được export SavedModel rồi chuyển thành TensorFlow.js GraphModel: model.json cùng các shard .bin.
+- Phiên bản TensorFlow.js được nhắc trong lịch sử: 4.22.0, đã xác nhận trong index.html ngày 2026-09-15.
+
+## Các quyết định hiện hành
+
+### Mô hình và nhãn
+
+Chỉ hỗ trợ MobileNetV2, ResNet50, DenseNet121, EfficientNet-B0. Đã yêu cầu loại lựa chọn CNN cũ.
+
+Bốn nhãn tư thế: leaning_backward, leaning_left, leaning_right, upright. unknown là trạng thái dưới ngưỡng tin cậy, không phải lớp học thứ năm. Thứ tự đầu ra cần đối chiếu metadata của model trước khi sửa code.
+
+### Camera realtime
+
+Webcam → crop vuông vùng trung tâm khoảng 90% → resize 224×224 → model → probabilities → trung bình xác suất 10 frame gần nhất → ngưỡng confidence → tư thế cuối.
+
+- Tần suất khoảng 250 ms/lần, tức 4 lần/giây.
+- Ngưỡng hiện hành: 0.50, thay thế đề xuất 0.65 trước đó.
+- Confidence >= ngưỡng: nhận tư thế; dưới ngưỡng: unknown.
+- Không chia thêm /255 đối với MobileNetV2 hiện tại vì preprocessing được mô tả là đã nằm trong graph. Phải kiểm tra riêng từng model khi có source/model thực.
+- Vấn đề được báo cáo: MobileNetV2 nhận ảnh upload khá tốt nhưng camera realtime kém hơn.
+
+### Super Admin
+
+- Quản lý model/version và chọn model Active.
+- Upload model: trình duyệt xin signed upload token qua Netlify, tải từng tệp trực tiếp lên Supabase Storage, rồi gọi finalize.
+- Các function được nhắc: prepare-model-upload.mjs, finalize-model-upload.mjs.
+- Hiển thị tiến độ upload và lỗi với HTTP status, stage, request_id, detail.
+- Tab Test mô hình: upload và preview ảnh, detect bằng model Active, hiển thị model/version, backend/version TensorFlow.js, nhãn, confidence và xác suất bốn lớp; có nút tải lại model Active.
+- Ảnh test resize 224×224, không crop như camera.
+- Ngưỡng confidence được đưa vào Cấu hình hệ thống / Model AI, mặc định 0.50 và dùng chung camera cùng test ảnh.
+
+### Cảnh báo âm thanh
+
+- Có nút Test âm thanh trong cài đặt cá nhân.
+- Dùng giọng tiếng Anh en-US/en-GB, các câu đã chọn:
+  - Please sit straight. You are leaning left.
+  - Please sit straight. You are leaning right.
+  - Please sit straight. You are leaning backward.
+- Sai tư thế quá thời gian cấu hình thì cảnh báo, tiếp tục sai thì lặp theo thời gian đó; ví dụ mỗi 10 giây.
+- unknown xen kẽ không reset timer; upright ổn định reset chu kỳ.
+- Ghi alert-log mỗi lần cảnh báo.
+
+## Source chính và trạng thái đã xác minh — 2026-09-15
+
+- Repository: https://github.com/hainammai3008-stack/postureguard-ai
+- Nhánh chính: main.
+- Commit ứng dụng đã pull: d99f417 — system confidence.
+- app.js khai báo APP_VERSION=6.10.0; package.json vẫn ghi 5.0.0, nên không suy ra phiên bản tính năng chỉ từ package.json.
+- Dự án sidebar Codex: postureguard-ai. Trên máy hiện tại, thư mục source là /Users/huymq85/private/postureguard-ai/projects/postureguard-ai. Máy khác có thể dùng đường dẫn khác.
+- Đã kiểm tra source: bốn model, confidence mặc định 0.50, trung bình 10 frame, khoảng cách 250 ms, crop 0.90, các câu cảnh báo tiếng Anh và luồng prepare/upload/finalize đều có trong code.
+- Khi pull bằng --ff-only --autostash, hai file app.js và netlify/functions/upload-model.mjs bị conflict với phần sửa upload local cũ. Đã giữ phiên bản mới từ GitHub vì luồng multipart cũ đã được thay thế.
+- Bản sửa local cũ còn trong stash ở máy này: 687a0a7 (được hiển thị là stash@{0} khi xử lý). Stash KHÔNG được push lên GitHub. Không tự pop vì sẽ đưa luồng upload cũ trở lại; xác minh bằng git stash list trước khi tham chiếu vị trí stash.
+- Kiểm tra node --check app.js và node --check netlify/functions/upload-model.mjs đã đạt sau pull. Chưa chạy kiểm thử camera/browser hoặc deploy trong phiên này.
+
+## Supabase đã kết nối và kiểm tra
+
+- Dashboard: https://supabase.com/dashboard/project/rerilknktawamkjqedig
+- Project ref: rerilknktawamkjqedig; tên postureguard-ai; nhánh main.
+- Người dùng đã tự đăng nhập Supabase qua trình duyệt trong Codex. Đây là phiên đăng nhập của máy hiện tại, không phải credential đã lưu trong repo, CLI hay MCP.
+- Ngày 2026-09-15, truy vấn chỉ đọc trong SQL Editor xác nhận:
+  - system_config.confidence_threshold tồn tại, numeric, NOT NULL, default 0.500.
+  - Có CHECK confidence_threshold > 0 AND confidence_threshold <= 1.
+  - system_config.selected_model và model_registry.model_key có constraint chỉ chấp nhận mobilenetv2, resnet50, densenet121, efficientnetb0.
+  - selected_model mặc định mobilenetv2; model_key ở monitor_sessions, posture_events, alerts, reports cũng mặc định mobilenetv2.
+- Vì vậy phần schema của hai migration sau đã hiện diện; không chạy lại chỉ vì lịch sử chat trước nói cần chạy:
+  - supabase/postureguard_migrate_models_v6_7.sql
+  - supabase/postureguard_migrate_confidence_v6_10.sql
+- Chưa kiểm tra giá trị cấu hình đang lưu trong từng row, model Active thực tế, toàn bộ dữ liệu legacy hoặc toàn bộ schema. Default 0.500 không đồng nghĩa row đang dùng chắc chắn là 0.500.
+- Trang tổng quan hiển thị No migrations nhưng có bảng app_migrations; không dùng dòng tổng quan để kết luận SQL thủ công chưa được áp dụng.
+- Dashboard hiển thị cảnh báo RLS chưa bật trên public.app_migrations. Chưa sửa vấn đề này; cần xem quyền truy cập và cách bảng được dùng trước khi thay đổi.
+- Trong phiên này chỉ chạy SELECT, chưa ALTER/UPDATE/DELETE trên Supabase.
+
+## Điểm cần lưu ý khi phát triển tiếp
+
+- Yêu cầu trong chat nói reset cảnh báo khi upright ổn định. Source hiện tại reset ngay khi nhãn cuối sau smoothing là upright, chưa thấy bộ đếm riêng yêu cầu upright liên tục vài giây. Không mô tả đó là cơ chế đã được kiểm chứng.
+- index.html còn dòng hướng dẫn test ảnh ghi ngưỡng 65%, trong khi code mặc định 50% và ngưỡng có thể cấu hình. Đây là chênh lệch nội dung UI đã phát hiện, chưa sửa trong tác vụ lưu ngữ cảnh.
+- Preprocessing không /255 đã có trong source, nhưng việc mọi model đều nhúng đúng preprocessing chưa được kiểm chứng bằng artifact model thực tế.
+- Nếu tiếp tục xử lý chất lượng realtime: so sánh cùng một frame webcam qua hai luồng, kiểm tra probabilities/preprocessing trước khi kết luận phải train lại. Capture frame và hiển thị xác suất realtime từng được đề xuất, chưa coi là tính năng đã triển khai.
+- Hướng train/export đã thảo luận: train trên Colab, export .keras sang SavedModel, tải ZIP về Mac để convert GraphModel; môi trường convert riêng Python 3.11, TensorFlow 2.16.1, tensorflowjs 4.22.0, numpy 1.26.4 và setuptools<81 từng được hướng dẫn. Đây là lịch sử xử lý tương thích, không phải môi trường đã kiểm tra trên máy mới.
+- User thường: Supabase Auth, dashboard, cài đặt học sinh/email phụ huynh/ngưỡng cảnh báo, phiên camera và báo cáo khi kết thúc phiên. Super Admin đăng nhập riêng qua backend. README hiện mô tả mật khẩu MD5 cho demo; chưa thay đổi auth trong phiên này.
+- Chưa biết URL site Netlify hoặc xác nhận commit mới nhất đã deploy. Supabase và source local được kiểm tra riêng, không suy ra môi trường production đã đồng bộ.
+
+## Quy trình làm việc trên nhiều máy
+
+1. Clone repo trên máy mới, thêm đúng thư mục vào project Codex và đọc AGENTS.md cùng tài liệu này.
+2. Trước khi làm, kiểm tra git status và pull thay đổi mới; bảo toàn các thay đổi chưa commit.
+3. Sau công việc, cập nhật tài liệu về quyết định mới, kiểm thử, migration thực sự đã áp dụng và việc còn lại; commit/push để máy khác nhận được.
+4. Ngữ cảnh trong repo là bản bàn giao được duy trì, không phải tự động đồng bộ nguyên văn mọi cuộc trò chuyện Codex.
+5. Thiết lập dependencies, biến môi trường và đăng nhập dịch vụ riêng trên từng máy. Không commit .env, mật khẩu, service-role key, token hoặc cookie.
+6. Có thể dùng Remote/Handoff nếu các máy đã kết nối và hỗ trợ; tác vụ hiện tại chưa thiết lập kết nối nhiều máy.
+
+## Phạm vi và ưu tiên
+
+Người dùng trao đổi bằng tiếng Việt; tiếng Anh là lựa chọn riêng cho âm thanh cảnh báo. Người dùng muốn làm trực tiếp trên repo chính, giữ ngữ cảnh trong repo và đồng bộ qua GitHub.
+
+Tài liệu này tổng hợp toàn bộ ngữ cảnh dự án hiện đã biết từ cuộc trao đổi hiện tại, các lượt gần nhất đã đọc trong chat gốc và kiểm tra source/database. Không phải bản xuất nguyên văn toàn bộ chat gốc hoặc tệp đính kèm. Các đường dẫn ZIP từng có trong chat không đồng nghĩa các tệp đó hiện có tại workspace.
+
+Chưa có yêu cầu phát triển tính năng tiếp theo. Không tự dựng lại ứng dụng, chạy migration, thay đổi auth hoặc deploy chỉ từ danh sách vấn đề ở trên.
