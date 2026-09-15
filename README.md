@@ -139,3 +139,11 @@ Realtime camera pipeline now uses MoveNet SinglePose Lightning to detect the sea
 - Pose left/right lean is used only as a weak +0.05 supporting probability signal.
 - Existing system confidence threshold remains configurable by Super Admin.
 - No database migration is required from v6.11.
+
+
+## v6.13 Visible pose bounding box
+- Pose overlay is forced above video with z-index.
+- Green box: current MoveNet detection.
+- Yellow box: last valid box reused within 2-second TTL.
+- Red status: person not detected.
+- Status badge is not mirrored, so text remains readable.
