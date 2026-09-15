@@ -146,7 +146,15 @@
             <video id="video" autoplay playsinline muted></video>
             <canvas id="poseOverlay" class="pose-overlay"></canvas>
           </div>
+<<<<<<< Updated upstream
           <p class="hint">MoveNet tự định vị người rồi crop theo vị trí thực tế trước khi phân loại tư thế. Nếu không phát hiện được người, hệ thống tạm dùng toàn bộ frame.</p>
+=======
+<<<<<<< HEAD
+          <p class="hint">MoveNet tự định vị người, kiểm tra chất lượng keypoint và crop theo người. Kết quả được weighted-average 10 frame + hysteresis để giảm nhảy nhãn.</p>
+=======
+          <p class="hint">MoveNet tự định vị người rồi crop theo vị trí thực tế trước khi phân loại tư thế. Nếu không phát hiện được người, hệ thống tạm dùng toàn bộ frame.</p>
+>>>>>>> e32a5e453ce78537017d2a99c12cfe7ab7d47952
+>>>>>>> Stashed changes
         </div>
 
         <div class="card">
@@ -337,7 +345,7 @@
               <div class="hint">Chưa có kết quả.</div>
             </div>
           </div>
-          <p class="hint">Thứ tự lớp: leaning_backward, leaning_left, leaning_right, upright. Ngưỡng hiển thị “Chưa xác định”: 65%.</p>
+          <p class="hint">Thứ tự lớp: leaning_backward, leaning_left, leaning_right, upright. Ngưỡng hiển thị “Chưa xác định” lấy từ Cấu hình hệ thống.</p>
         </div>
       </div>
     </section>
@@ -357,6 +365,6 @@
 </div>
 
 <script src="/config.js"></script>
-<script type="module" src="/app.js?v=6.10.0"></script>
+<script type="module" src="/app.js?v=6.12.0"></script>
 </body>
 </html>

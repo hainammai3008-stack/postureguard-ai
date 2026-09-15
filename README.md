@@ -129,3 +129,19 @@ Realtime camera inference was updated to reduce jitter and improve webcam behavi
 ## v6.11 - MoveNet person tracking for realtime
 
 Realtime camera pipeline now uses MoveNet SinglePose Lightning to detect the seated student's upper-body keypoints, builds a padded square person bounding box, and crops dynamically before the active posture classifier. Pose runs every 500 ms while posture classification remains around every 250 ms. The last valid box is reused for up to 2 seconds; if pose detection is unavailable temporarily, classification falls back to the full webcam frame. A green overlay box shows the detected crop region. No database migration is required for this version.
+<<<<<<< Updated upstream
+=======
+<<<<<<< HEAD
+
+
+## v6.12 Realtime quality pipeline
+- Pose quality gate uses shoulder/hip keypoints before trusting realtime classification.
+- Person crop is based on pose upper-body box with 18% padding and square normalization.
+- 10-frame probability smoothing now uses weighted average; recent frames have higher weight.
+- 3-frame hysteresis is applied before the final posture state changes.
+- Pose left/right lean is used only as a weak +0.05 supporting probability signal.
+- Existing system confidence threshold remains configurable by Super Admin.
+- No database migration is required from v6.11.
+=======
+>>>>>>> e32a5e453ce78537017d2a99c12cfe7ab7d47952
+>>>>>>> Stashed changes
