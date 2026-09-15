@@ -3,15 +3,7 @@ const { createClient } = window.supabase;
 const supabase = createClient(CFG.SUPABASE_URL, CFG.SUPABASE_ANON_KEY);
 
 const CLASS_NAMES = ['leaning_backward','leaning_left','leaning_right','upright'];
-<<<<<<< Updated upstream
-const APP_VERSION='6.11.0';
-=======
-<<<<<<< HEAD
 const APP_VERSION='6.12.0';
-=======
-const APP_VERSION='6.11.0';
->>>>>>> e32a5e453ce78537017d2a99c12cfe7ab7d47952
->>>>>>> Stashed changes
 const ALERT_SPEECH={leaning_left:'Please sit straight. You are leaning left.',leaning_right:'Please sit straight. You are leaning right.',leaning_backward:'Please sit straight. You are leaning backward.'};
 console.log('[PostureGuard] app version', APP_VERSION);
 const CORRECT_CLASS = 'upright';
@@ -24,11 +16,6 @@ const PROBABILITY_AVG_FRAMES = 10;
 const PREDICT_INTERVAL_MS = 250;
 const POSE_INTERVAL_MS = 500;
 const POSE_MIN_SCORE = 0.30;
-<<<<<<< Updated upstream
-const POSE_PADDING = 0.20;
-const POSE_BOX_TTL_MS = 2000;
-=======
-<<<<<<< HEAD
 const POSE_CORE_MIN_SCORE = 0.35;
 const POSE_PADDING = 0.18;
 const POSE_BOX_TTL_MS = 2000;
@@ -36,11 +23,6 @@ const HYSTERESIS_FRAMES = 3;
 const POSE_ASSIST_BOOST = 0.05;
 const POSE_LEAN_THRESHOLD = 0.10; // normalized shoulder-vs-hip horizontal offset
 
-=======
-const POSE_PADDING = 0.20;
-const POSE_BOX_TTL_MS = 2000;
->>>>>>> e32a5e453ce78537017d2a99c12cfe7ab7d47952
->>>>>>> Stashed changes
 
 const MODEL_NAMES = {
   mobilenetv2:'MobileNetV2',
@@ -75,17 +57,11 @@ let poseDetector = null;
 let personBox = null;
 let lastPoseAt = 0;
 let lastPoseSuccessAt = 0;
-<<<<<<< Updated upstream
-=======
-<<<<<<< HEAD
 let poseQualityOk = false;
 let poseLeanHint = null;
 let stablePostureLabel = 'unknown';
 let postureCandidateLabel = null;
 let postureCandidateCount = 0;
-=======
->>>>>>> e32a5e453ce78537017d2a99c12cfe7ab7d47952
->>>>>>> Stashed changes
 let badStartAt = null;
 let lastAlertAt = 0;
 let sessionId = null;
@@ -396,9 +372,6 @@ async function ensurePoseDetector(){
   return poseDetector;
 }
 
-<<<<<<< Updated upstream
-=======
-<<<<<<< HEAD
 function getKeypointMap(keypoints){
   const map={};
   for(const p of keypoints||[]) if(p?.name) map[p.name]=p;
@@ -436,9 +409,6 @@ function estimatePoseLeanHint(quality){
   return null;
 }
 
-=======
->>>>>>> e32a5e453ce78537017d2a99c12cfe7ab7d47952
->>>>>>> Stashed changes
 function makeSquarePersonBox(points, videoWidth, videoHeight){
   if(!points.length) return null;
   const xs=points.map(p=>p.x);
@@ -449,27 +419,11 @@ function makeSquarePersonBox(points, videoWidth, videoHeight){
   const padX=width*POSE_PADDING, padY=height*POSE_PADDING;
   x1-=padX; x2+=padX; y1-=padY; y2+=padY;
 
-<<<<<<< Updated upstream
-  // Convert to a square region so resize to 224x224 does not stretch the body.
-=======
-<<<<<<< HEAD
   // Keep the head + torso centered and use a square crop to avoid body stretching.
-=======
-  // Convert to a square region so resize to 224x224 does not stretch the body.
->>>>>>> e32a5e453ce78537017d2a99c12cfe7ab7d47952
->>>>>>> Stashed changes
   const cx=(x1+x2)/2, cy=(y1+y2)/2;
   const side=Math.min(Math.max(x2-x1,y2-y1), Math.max(videoWidth,videoHeight));
   x1=cx-side/2; y1=cy-side/2; x2=cx+side/2; y2=cy+side/2;
 
-<<<<<<< Updated upstream
-  // Shift the square back inside the video instead of shrinking it abruptly.
-=======
-<<<<<<< HEAD
-=======
-  // Shift the square back inside the video instead of shrinking it abruptly.
->>>>>>> e32a5e453ce78537017d2a99c12cfe7ab7d47952
->>>>>>> Stashed changes
   if(x1<0){x2-=x1;x1=0;}
   if(y1<0){y2-=y1;y1=0;}
   if(x2>videoWidth){x1-=x2-videoWidth;x2=videoWidth;}
@@ -483,21 +437,9 @@ async function detectPersonBox(source){
   const detector=await ensurePoseDetector();
   const poses=await detector.estimatePoses(source,{maxPoses:1,flipHorizontal:false});
   const pose=poses?.[0];
-<<<<<<< Updated upstream
-  if(!pose?.keypoints?.length) return null;
-
-  // Upper-body points are more stable for a seated student and avoid a huge box from ankles.
-=======
-<<<<<<< HEAD
   if(!pose?.keypoints?.length) return {box:null,qualityOk:false,leanHint:null};
 
   const quality=evaluatePoseQuality(pose.keypoints);
-=======
-  if(!pose?.keypoints?.length) return null;
-
-  // Upper-body points are more stable for a seated student and avoid a huge box from ankles.
->>>>>>> e32a5e453ce78537017d2a99c12cfe7ab7d47952
->>>>>>> Stashed changes
   const upperBodyNames=new Set([
     'nose','left_eye','right_eye','left_ear','right_ear',
     'left_shoulder','right_shoulder','left_elbow','right_elbow',
@@ -506,11 +448,6 @@ async function detectPersonBox(source){
   const points=pose.keypoints.filter(p=>
     upperBodyNames.has(p.name) && Number(p.score||0)>=POSE_MIN_SCORE
   );
-<<<<<<< Updated upstream
-  if(points.length<4) return null;
-  return makeSquarePersonBox(points,source.videoWidth,source.videoHeight);
-=======
-<<<<<<< HEAD
   const box=points.length>=4 ? makeSquarePersonBox(points,source.videoWidth,source.videoHeight) : null;
   return {
     box,
@@ -518,11 +455,6 @@ async function detectPersonBox(source){
     leanHint:estimatePoseLeanHint(quality),
     qualityReason:quality.reason
   };
-=======
-  if(points.length<4) return null;
-  return makeSquarePersonBox(points,source.videoWidth,source.videoHeight);
->>>>>>> e32a5e453ce78537017d2a99c12cfe7ab7d47952
->>>>>>> Stashed changes
 }
 
 function drawPoseBox(box){
@@ -604,12 +536,6 @@ function weightedAverageProbabilities(probs, leanHint=null){
   };
 }
 
-<<<<<<< Updated upstream
-async function startCamera(){if(!model)return alert('Model chưa sẵn sàng');try{msg($('cameraMessage'),'info','Đang khởi tạo MoveNet pose detection…');await ensurePoseDetector();stream=await navigator.mediaDevices.getUserMedia({video:{facingMode:'user',width:{ideal:960},height:{ideal:720}},audio:false});$('video').srcObject=stream;cameraRunning=true;probabilityHistory=[];personBox=null;lastPoseAt=0;lastPoseSuccessAt=0;badStartAt=null;lastAlertAt=0;currentEpisode=null;sessionId=crypto.randomUUID();await userApi('session',{method:'POST',body:JSON.stringify({action:'start',session_id:sessionId,model_key:systemConfig.selected_model})});$('startCamera').disabled=true;$('stopCamera').disabled=false;$('emailReportState').textContent='Chưa gửi';msg($('cameraMessage'),'info','Camera đã bật. MoveNet đang tự định vị người.');const token=++predictLoopToken;predictLoop(token)}catch(e){console.error(e);msg($('cameraMessage'),'error',`Không thể bật camera/pose detection: ${e.message}`)}}
-async function stopCamera(){cameraRunning=false;++predictLoopToken;probabilityHistory=[];personBox=null;lastPoseAt=0;lastPoseSuccessAt=0;drawPoseBox(null);if(currentEpisode)await closeEpisode(Date.now());if(stream)stream.getTracks().forEach(t=>t.stop());stream=null;$('video').srcObject=null;$('startCamera').disabled=false;$('stopCamera').disabled=true;if(sessionId){await userApi('session',{method:'POST',body:JSON.stringify({action:'stop',session_id:sessionId})});if(profile?.email_enabled){try{$('emailReportState').textContent='Đang gửi…';await userApi('send-report',{method:'POST',body:JSON.stringify({session_id:sessionId})});$('emailReportState').textContent='Đã gửi'}catch(e){console.error(e);$('emailReportState').textContent='Lỗi gửi'}}}sessionId=null;setState('idle','Đã tắt camera')}
-async function predictLoop(token){while(cameraRunning&&token===predictLoopToken){const video=$('video');if(video.readyState>=2){try{const now=Date.now();if(now-lastPoseAt>=POSE_INTERVAL_MS){lastPoseAt=now;const detected=await detectPersonBox(video);if(detected){personBox=detected;lastPoseSuccessAt=now;drawPoseBox(personBox)}else if(now-lastPoseSuccessAt>POSE_BOX_TTL_MS){personBox=null;drawPoseBox(null)}}const rawProbs=await inferCamera(video,personBox);const r=averageProbabilities(rawProbs);await handlePosture(r.label,r.confidence)}catch(e){console.error('[realtime pipeline]',e)}}await sleep(PREDICT_INTERVAL_MS)}}
-=======
-<<<<<<< HEAD
 function applyPostureHysteresis(candidate){
   if(candidate===stablePostureLabel){
     postureCandidateLabel=null;
@@ -632,12 +558,6 @@ function applyPostureHysteresis(candidate){
 async function startCamera(){if(!model)return alert('Model chưa sẵn sàng');try{msg($('cameraMessage'),'info','Đang khởi tạo MoveNet pose detection…');await ensurePoseDetector();stream=await navigator.mediaDevices.getUserMedia({video:{facingMode:'user',width:{ideal:960},height:{ideal:720}},audio:false});$('video').srcObject=stream;cameraRunning=true;probabilityHistory=[];personBox=null;lastPoseAt=0;lastPoseSuccessAt=0;poseQualityOk=false;poseLeanHint=null;stablePostureLabel='unknown';postureCandidateLabel=null;postureCandidateCount=0;badStartAt=null;lastAlertAt=0;currentEpisode=null;sessionId=crypto.randomUUID();await userApi('session',{method:'POST',body:JSON.stringify({action:'start',session_id:sessionId,model_key:systemConfig.selected_model})});$('startCamera').disabled=true;$('stopCamera').disabled=false;$('emailReportState').textContent='Chưa gửi';msg($('cameraMessage'),'info','Camera đã bật. MoveNet đang tự định vị người.');const token=++predictLoopToken;predictLoop(token)}catch(e){console.error(e);msg($('cameraMessage'),'error',`Không thể bật camera/pose detection: ${e.message}`)}}
 async function stopCamera(){cameraRunning=false;++predictLoopToken;probabilityHistory=[];personBox=null;lastPoseAt=0;lastPoseSuccessAt=0;poseQualityOk=false;poseLeanHint=null;stablePostureLabel='unknown';postureCandidateLabel=null;postureCandidateCount=0;drawPoseBox(null);if(currentEpisode)await closeEpisode(Date.now());if(stream)stream.getTracks().forEach(t=>t.stop());stream=null;$('video').srcObject=null;$('startCamera').disabled=false;$('stopCamera').disabled=true;if(sessionId){await userApi('session',{method:'POST',body:JSON.stringify({action:'stop',session_id:sessionId})});if(profile?.email_enabled){try{$('emailReportState').textContent='Đang gửi…';await userApi('send-report',{method:'POST',body:JSON.stringify({session_id:sessionId})});$('emailReportState').textContent='Đã gửi'}catch(e){console.error(e);$('emailReportState').textContent='Lỗi gửi'}}}sessionId=null;setState('idle','Đã tắt camera')}
 async function predictLoop(token){while(cameraRunning&&token===predictLoopToken){const video=$('video');if(video.readyState>=2){try{const now=Date.now();if(now-lastPoseAt>=POSE_INTERVAL_MS){lastPoseAt=now;const detected=await detectPersonBox(video);if(detected.box){personBox=detected.box;lastPoseSuccessAt=now;poseQualityOk=detected.qualityOk;poseLeanHint=detected.leanHint;drawPoseBox(personBox)}else if(now-lastPoseSuccessAt>POSE_BOX_TTL_MS){personBox=null;poseQualityOk=false;poseLeanHint=null;drawPoseBox(null)}}const rawProbs=await inferCamera(video,personBox);const r=weightedAverageProbabilities(rawProbs,poseLeanHint);const qualityAllowsPrediction=poseQualityOk || (personBox && now-lastPoseSuccessAt<=POSE_BOX_TTL_MS);const candidate=qualityAllowsPrediction?r.rawLabel:'unknown';const finalLabel=applyPostureHysteresis(candidate);await handlePosture(finalLabel,r.confidence)}catch(e){console.error('[realtime pipeline]',e)}}await sleep(PREDICT_INTERVAL_MS)}}
-=======
-async function startCamera(){if(!model)return alert('Model chưa sẵn sàng');try{msg($('cameraMessage'),'info','Đang khởi tạo MoveNet pose detection…');await ensurePoseDetector();stream=await navigator.mediaDevices.getUserMedia({video:{facingMode:'user',width:{ideal:960},height:{ideal:720}},audio:false});$('video').srcObject=stream;cameraRunning=true;probabilityHistory=[];personBox=null;lastPoseAt=0;lastPoseSuccessAt=0;badStartAt=null;lastAlertAt=0;currentEpisode=null;sessionId=crypto.randomUUID();await userApi('session',{method:'POST',body:JSON.stringify({action:'start',session_id:sessionId,model_key:systemConfig.selected_model})});$('startCamera').disabled=true;$('stopCamera').disabled=false;$('emailReportState').textContent='Chưa gửi';msg($('cameraMessage'),'info','Camera đã bật. MoveNet đang tự định vị người.');const token=++predictLoopToken;predictLoop(token)}catch(e){console.error(e);msg($('cameraMessage'),'error',`Không thể bật camera/pose detection: ${e.message}`)}}
-async function stopCamera(){cameraRunning=false;++predictLoopToken;probabilityHistory=[];personBox=null;lastPoseAt=0;lastPoseSuccessAt=0;drawPoseBox(null);if(currentEpisode)await closeEpisode(Date.now());if(stream)stream.getTracks().forEach(t=>t.stop());stream=null;$('video').srcObject=null;$('startCamera').disabled=false;$('stopCamera').disabled=true;if(sessionId){await userApi('session',{method:'POST',body:JSON.stringify({action:'stop',session_id:sessionId})});if(profile?.email_enabled){try{$('emailReportState').textContent='Đang gửi…';await userApi('send-report',{method:'POST',body:JSON.stringify({session_id:sessionId})});$('emailReportState').textContent='Đã gửi'}catch(e){console.error(e);$('emailReportState').textContent='Lỗi gửi'}}}sessionId=null;setState('idle','Đã tắt camera')}
-async function predictLoop(token){while(cameraRunning&&token===predictLoopToken){const video=$('video');if(video.readyState>=2){try{const now=Date.now();if(now-lastPoseAt>=POSE_INTERVAL_MS){lastPoseAt=now;const detected=await detectPersonBox(video);if(detected){personBox=detected;lastPoseSuccessAt=now;drawPoseBox(personBox)}else if(now-lastPoseSuccessAt>POSE_BOX_TTL_MS){personBox=null;drawPoseBox(null)}}const rawProbs=await inferCamera(video,personBox);const r=averageProbabilities(rawProbs);await handlePosture(r.label,r.confidence)}catch(e){console.error('[realtime pipeline]',e)}}await sleep(PREDICT_INTERVAL_MS)}}
->>>>>>> e32a5e453ce78537017d2a99c12cfe7ab7d47952
->>>>>>> Stashed changes
 async function handlePosture(label,confidence){const now=Date.now();$('confidence').textContent=`${(confidence*100).toFixed(1)}%`;if(!currentEpisode||currentEpisode.label!==label){if(currentEpisode)await closeEpisode(now);currentEpisode={label,startedAt:now,maxConfidence:confidence}}else currentEpisode.maxConfidence=Math.max(currentEpisode.maxConfidence,confidence);if(label===CORRECT_CLASS){badStartAt=null;lastAlertAt=0;$('badDuration').textContent='0.0s';$('localAlertState').textContent='Chưa';setState('good','✅ Tư thế đúng');msg($('cameraMessage'),'ok','Bạn đang ngồi đúng tư thế.');return}if(label==='unknown'){setState('unknown','⚠️ Chưa xác định');return}if(!badStartAt){badStartAt=now;lastAlertAt=0}const seconds=(now-badStartAt)/1000;$('badDuration').textContent=`${seconds.toFixed(1)}s`;setState('bad',`❌ ${DISPLAY[label]}`);msg($('cameraMessage'),'error',`Phát hiện ${DISPLAY[label].toLowerCase()} trong ${seconds.toFixed(0)} giây.`);const alertSeconds=Math.max(1,Number(profile.local_alert_seconds||10));const alertMs=alertSeconds*1000;if(seconds>=alertSeconds&&(lastAlertAt===0||now-lastAlertAt>=alertMs)){lastAlertAt=now;$('localAlertState').textContent=`Đã cảnh báo • lặp mỗi ${alertSeconds}s`;try{await speak(ALERT_SPEECH[label] || 'Please sit straight and correct your posture.')}catch(e){console.error('Không phát được cảnh báo âm thanh:',e)}try{await userApi('alert-log',{method:'POST',body:JSON.stringify({session_id:sessionId,posture:label,duration_seconds:Math.round(seconds),model_key:systemConfig.selected_model,channel:'audio'})})}catch(e){console.error('Không ghi được alert-log:',e)}}}
 async function closeEpisode(endedAt){const ep=currentEpisode;currentEpisode=null;if(!ep||!sessionId||ep.label==='unknown')return;await userApi('event',{method:'POST',body:JSON.stringify({session_id:sessionId,posture:ep.label,confidence:ep.maxConfidence,started_at:new Date(ep.startedAt).toISOString(),duration_seconds:Math.max(1,Math.round((endedAt-ep.startedAt)/1000)),model_key:systemConfig.selected_model})})}
 function getEnglishVoice(){
