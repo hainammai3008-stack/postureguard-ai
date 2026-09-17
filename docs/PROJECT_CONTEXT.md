@@ -1,5 +1,19 @@
 # Ngữ cảnh dự án PostureGuard AI
 
+## Cập nhật dataset chuẩn — 2026-09-17
+
+- Quyết định mới nhất của người dùng: bộ dataset chuẩn có 5 nhãn `leaning_backward`, `leaning_forward`, `leaning_left`, `leaning_right`, `upright`; bỏ `head_down` vì sáu ZIP hiện có không có nhãn này.
+- Bộ 5 lớp `colab/posture_dataset_standard_5class.zip` được tạo từ nguồn multiclass v5 (gộp ba split gốc rồi chia lại theo nhóm frame). Train 3.035 ảnh; val/test mỗi tập 400 ảnh, 80 ảnh/lớp. Loại 183 ảnh do frame gốc có nhãn mâu thuẫn.
+- Chưa sửa model/app hiện đang dùng 4 lớp để nhận `leaning_forward`; chưa train lại. Tất cả notebook cần cùng thứ tự nhãn 5 lớp và cùng split trước khi benchmark mới.
+- Bốn notebook Colab đã cập nhật để upload `posture_dataset_standard_5class.zip`, dùng cùng split cố định và nhãn theo đúng thứ tự; MobileNetV2 không còn tự chia dữ liệu; EfficientNet-B0 sửa từ code B1; gói SavedModel thêm `class_names.json`. Đã kiểm tra cấu trúc notebook và cú pháp các ô Python, chưa chạy train trên Colab/GPU.
+- Để đồng bộ GitHub, ZIP chuẩn 5 lớp được chia thành bốn phần dưới 40 MiB trong `colab/dataset_parts/`, có manifest SHA-256. Chạy `python3 scripts/assemble_standard_5class_dataset.py` sau khi clone để khôi phục ZIP. Source ZIP Roboflow gốc vẫn là tệp local, không đưa lên Git.
+
+- Sáu ZIP nguồn hiện ở `colab/dataset/`; là file local chưa commit. Không đưa ZIP/dataset lớn vào Git.
+- Đã tạo `scripts/build_standard_dataset.py` và bộ `colab/posture_dataset_standard/` từ nguồn multiclass v5. Split gốc của nguồn này thiếu lớp ở val/test, nên chỉ lấy phần train có đủ bốn nhãn rồi chia lại theo nhóm frame.
+- Kết quả: train 1.954 ảnh (backward 296, left 377, right 510, upright 771); val 320 và test 320, mỗi lớp 80 ảnh. 102 ảnh bị loại do cùng frame gốc có nhãn mâu thuẫn. Có manifest nguồn/hash và báo cáo JSON.
+- Các ZIP COCO/binary/nhãn khác không được ép thành bốn lớp. Xem `colab/DATASET_STANDARD.md` về cách dùng và giới hạn dữ liệu.
+- Đã xem contact sheet mẫu. Chưa train lại bốn mô hình, chưa đánh giá trên bộ test mới. Chưa kiểm chứng khả năng tổng quát hóa trên người mới vì thiếu ID người/video gốc.
+
 Dự án AI nhận diện tư thế ngồi qua webcam, có quản trị mô hình và cảnh báo âm thanh.
 
 ## Nguồn ngữ cảnh

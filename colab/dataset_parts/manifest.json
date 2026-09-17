@@ -1,0 +1,26 @@
+{
+  "archive": "posture_dataset_standard_5class.zip",
+  "archive_sha256": "3cc9e3b6ecc5a45a5bf139f46ab56a6d973b52f7b51af6a0ed06d28c83f30e98",
+  "parts": [
+    {
+      "file": "posture_dataset_standard_5class.part01",
+      "size": 41943040,
+      "sha256": "57dd169248dc1deb736a900fd6a780a103c09acaa65609b04d64f70a539cc146"
+    },
+    {
+      "file": "posture_dataset_standard_5class.part02",
+      "size": 41943040,
+      "sha256": "6ba6fc65b4840d5ad914d2865686aaf0fbaa1fdc27e3f2a8e88f4d9814e01053"
+    },
+    {
+      "file": "posture_dataset_standard_5class.part03",
+      "size": 41943040,
+      "sha256": "d1a230dedf5ae29093667d17197da1b90b59b05cac6a626485c917d6f75cddd3"
+    },
+    {
+      "file": "posture_dataset_standard_5class.part04",
+      "size": 19121941,
+      "sha256": "bca14117cc538b99408c66e09f8e538e82d6ff6cf6fb77dee5a739ae1cd83d2a"
+    }
+  ]
+}

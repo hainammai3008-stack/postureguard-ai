@@ -4,3 +4,8 @@ node_modules/
 .env.*
 !.env.example
 .DS_Store
+colab/dataset/*.zip
+colab/posture_dataset_standard/
+colab/posture_dataset_standard.zip
+colab/posture_dataset_standard_5class/
+colab/posture_dataset_standard_5class.zip
