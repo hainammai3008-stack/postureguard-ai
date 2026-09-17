@@ -2,7 +2,7 @@
 
 ## Cập nhật ứng dụng 5 nhãn — 2026-09-17
 
-- Đã `git fetch origin main`: remote vẫn ở `e3a6ff7`, không có commit mới hơn. Local đang có commit `59e39d2` về dataset/notebook, chưa push do GitHub CLI/git thiếu đăng nhập khi thử trước đó. Giữ nguyên các tệp local `colab/models/` và poster chưa được theo dõi.
+- Đã `git fetch origin main`: trước khi cập nhật, remote ở `e3a6ff7`, không có commit mới hơn. Hai commit `59e39d2` (dataset/notebook) và `714f72a` (ứng dụng 5 nhãn) đã push qua GitHub Desktop; `git ls-remote` xác nhận remote main ở `714f72a`. Giữ nguyên các tệp local `colab/models/` và poster chưa được theo dõi.
 - Model SavedModel local `colab/models/posture_saved_model.zip` chứa `class_names.json` với thứ tự `leaning_backward`, `leaning_forward`, `leaning_left`, `leaning_right`, `upright`.
 - `app.js` v6.16.0 nhận cả output 4 lớp cũ và 5 lớp mới theo đúng thứ tự; thêm nhãn tiếng Việt, cảnh báo tiếng Anh, test ảnh Admin và biểu đồ cho `leaning_forward`. Backend event/email/report và `index.html` đã cập nhật.
 - Đã kiểm tra database production Supabase bằng SELECT: `posture_events_posture_check` cũ chỉ có bốn nhãn. Đã chạy `supabase/postureguard_migrate_forward_v6_16.sql` qua SQL Editor, sau đó SELECT xác nhận constraint `posture_events_posture_five_classes_check` có đủ năm nhãn. Chưa deploy ứng dụng hoặc activate model 5 lớp.
