@@ -2,9 +2,10 @@ const CFG = window.POSTUREGUARD_CONFIG || {};
 const { createClient } = window.supabase;
 const supabase = createClient(CFG.SUPABASE_URL, CFG.SUPABASE_ANON_KEY);
 
-const CLASS_NAMES = ['leaning_backward','leaning_left','leaning_right','upright'];
-const APP_VERSION='6.13.0';
-const ALERT_SPEECH={leaning_left:'Please sit straight. You are leaning left.',leaning_right:'Please sit straight. You are leaning right.',leaning_backward:'Please sit straight. You are leaning backward.'};
+const CLASS_NAMES = ['leaning_backward','leaning_forward','leaning_left','leaning_right','upright'];
+const LEGACY_CLASS_NAMES = ['leaning_backward','leaning_left','leaning_right','upright'];
+const APP_VERSION='6.16.0';
+const ALERT_SPEECH={leaning_left:'Please sit straight. You are leaning left.',leaning_right:'Please sit straight. You are leaning right.',leaning_backward:'Please sit straight. You are leaning backward.',leaning_forward:'Please sit straight. You are leaning forward.'};
 console.log('[PostureGuard] app version', APP_VERSION);
 const CORRECT_CLASS = 'upright';
 const DEFAULT_MIN_CONFIDENCE = 0.50;
@@ -33,6 +34,7 @@ const MODEL_NAMES = {
 
 const DISPLAY = {
   leaning_backward:'Ngả về sau',
+  leaning_forward:'Nghiêng về trước',
   leaning_left:'Nghiêng trái',
   leaning_right:'Nghiêng phải',
   upright:'Tư thế đúng',
@@ -41,6 +43,12 @@ const DISPLAY = {
 
 const $ = id => document.getElementById(id);
 const sleep = ms => new Promise(r => setTimeout(r, ms));
+
+function classNamesForProbabilities(probs){
+  if(probs.length===CLASS_NAMES.length) return CLASS_NAMES;
+  if(probs.length===LEGACY_CLASS_NAMES.length) return LEGACY_CLASS_NAMES;
+  throw new Error(`Output model có ${probs.length} giá trị; chỉ hỗ trợ ${LEGACY_CLASS_NAMES.length} hoặc ${CLASS_NAMES.length} lớp.`);
+}
 
 let currentUser = null;
 let profile = null;
@@ -355,7 +363,7 @@ async function enterUserApp(session) {
 async function loadProfile(){profile=await userApi('profile',{method:'GET'});$('studentName').value=profile.student_name||'';$('parentEmail').value=profile.parent_email||'';$('localAlertSeconds').value=profile.local_alert_seconds||10;$('emailEnabled').checked=profile.email_enabled!==false}
 async function saveSettings(){const next={student_name:$('studentName').value.trim(),parent_email:$('parentEmail').value.trim(),local_alert_seconds:Number($('localAlertSeconds').value||10),email_enabled:$('emailEnabled').checked};try{await userApi('profile',{method:'POST',body:JSON.stringify(next)});profile=next;msg($('settingsMessage'),'ok','Đã lưu cài đặt cá nhân.')}catch(e){msg($('settingsMessage'),'error',e.message)}}
 async function loadPublicConfig(){systemConfig=await userApi('public-config',{method:'GET'})}
-async function loadSelectedModel(force=false){const key=systemConfig?.selected_model||'mobilenetv2',version=systemConfig?.model_version||'v1',url=systemConfig?.model_url;if(!url){$('modelBadge').textContent='Chưa có model active';$('modelBadge').className='badge badge-bad';return}const cacheKey=`${key}:${version}:${url}`;if(!force&&model&&activeModelCacheKey===cacheKey)return;$('modelBadge').textContent=`Đang tải ${MODEL_NAMES[key]} ${version}…`;$('modelBadge').className='badge badge-warn';if(model&&model.dispose)model.dispose();model=null;try{const sep=url.includes('?')?'&':'?';model=await tf.loadGraphModel(`${url}${sep}v=${encodeURIComponent(version)}&t=${encodeURIComponent(systemConfig.updated_at||Date.now())}`);activeModelCacheKey=cacheKey;$('modelBadge').textContent=`${MODEL_NAMES[key]} ${version}`;$('modelBadge').className='badge badge-ok';$('activeModelName').textContent=`${MODEL_NAMES[key]} ${version}`}catch(e){console.error(e);$('modelBadge').textContent='Lỗi tải model';$('modelBadge').className='badge badge-bad'}}
+async function loadSelectedModel(force=false){const key=systemConfig?.selected_model||'mobilenetv2',version=systemConfig?.model_version||'v1',url=systemConfig?.model_url;if(!url){$('modelBadge').textContent='Chưa có model active';$('modelBadge').className='badge badge-bad';return}const cacheKey=`${key}:${version}:${url}`;if(!force&&model&&activeModelCacheKey===cacheKey)return;$('modelBadge').textContent=`Đang tải ${MODEL_NAMES[key]} ${version}…`;$('modelBadge').className='badge badge-warn';if(model&&model.dispose)model.dispose();model=null;probabilityHistory=[];try{const sep=url.includes('?')?'&':'?';model=await tf.loadGraphModel(`${url}${sep}v=${encodeURIComponent(version)}&t=${encodeURIComponent(systemConfig.updated_at||Date.now())}`);activeModelCacheKey=cacheKey;$('modelBadge').textContent=`${MODEL_NAMES[key]} ${version}`;$('modelBadge').className='badge badge-ok';$('activeModelName').textContent=`${MODEL_NAMES[key]} ${version}`}catch(e){console.error(e);$('modelBadge').textContent='Lỗi tải model';$('modelBadge').className='badge badge-bad'}}
 function preprocess(source){return tf.tidy(()=>tf.browser.fromPixels(source,3).resizeBilinear([224,224]).toFloat().expandDims(0))}
 
 // Realtime camera pipeline:
@@ -546,11 +554,13 @@ async function inferCamera(source,box){
 }
 
 function weightedAverageProbabilities(probs, leanHint=null){
+  const classNames=classNamesForProbabilities(probs);
+  if(probabilityHistory.length && probabilityHistory[0].length!==probs.length) probabilityHistory=[];
   probabilityHistory.push(probs.map(Number));
   if(probabilityHistory.length>PROBABILITY_AVG_FRAMES) probabilityHistory.shift();
 
   // Newer frames receive larger weights (1..N) so the result is stable but responsive.
-  const avg=new Array(CLASS_NAMES.length).fill(0);
+  const avg=new Array(classNames.length).fill(0);
   let totalWeight=0;
   probabilityHistory.forEach((frame,idx)=>{
     const weight=idx+1;
@@ -561,7 +571,7 @@ function weightedAverageProbabilities(probs, leanHint=null){
 
   // Pose is only a weak supporting signal, never the primary classifier.
   if(leanHint==='leaning_left' || leanHint==='leaning_right'){
-    const idx=CLASS_NAMES.indexOf(leanHint);
+    const idx=classNames.indexOf(leanHint);
     if(idx>=0){
       avg[idx]+=POSE_ASSIST_BOOST;
       const sum=avg.reduce((a,b)=>a+b,0);
@@ -571,7 +581,7 @@ function weightedAverageProbabilities(probs, leanHint=null){
 
   const confidence=Math.max(...avg);
   const idx=avg.indexOf(confidence);
-  const raw=CLASS_NAMES[idx]||'unknown';
+  const raw=classNames[idx]||'unknown';
   return {
     rawLabel: confidence>=getConfidenceThreshold()?raw:'unknown',
     confidence,
@@ -651,7 +661,7 @@ async function testSound(){
 }
 function setState(kind,text){$('postureState').textContent=text;$('postureState').className=`state state-${kind}`}
 async function loadDashboard(){try{const data=await userApi('dashboard?days=7',{method:'GET'}),monitored=Number(data.monitored_seconds||0),bad=Number(data.bad_seconds||0),correct=monitored>0?Math.max(0,(monitored-bad)/monitored*100):0;$('kpiMonitor').textContent=`${Math.round(monitored/60)} phút`;$('kpiBad').textContent=`${Math.round(bad/60)} phút`;$('kpiCorrect').textContent=monitored?`${correct.toFixed(1)}%`:'--';$('kpiAlerts').textContent=data.alerts?.length||0;renderCharts(monitored,bad,data.bad_by_posture||{});renderAlerts(data.alerts||[])}catch(e){console.error(e)}}
-function renderCharts(monitored,bad,byPosture){if(ratioChart)ratioChart.destroy();if(postureChart)postureChart.destroy();ratioChart=new Chart($('ratioChart'),{type:'doughnut',data:{labels:['Ngồi đúng','Ngồi sai'],datasets:[{data:[Math.max(0,monitored-bad),bad],backgroundColor:['#36d399','#ff6b6b']}]},options:{plugins:{legend:{labels:{color:'#dbe5ff'}}}}});const keys=['leaning_left','leaning_right','leaning_backward'];postureChart=new Chart($('postureChart'),{type:'bar',data:{labels:keys.map(k=>DISPLAY[k]),datasets:[{label:'Phút',data:keys.map(k=>(byPosture[k]||0)/60),backgroundColor:'#6ea8fe'}]},options:{scales:{x:{ticks:{color:'#dbe5ff'}},y:{ticks:{color:'#dbe5ff'}}},plugins:{legend:{labels:{color:'#dbe5ff'}}}}})}
+function renderCharts(monitored,bad,byPosture){if(ratioChart)ratioChart.destroy();if(postureChart)postureChart.destroy();ratioChart=new Chart($('ratioChart'),{type:'doughnut',data:{labels:['Ngồi đúng','Ngồi sai'],datasets:[{data:[Math.max(0,monitored-bad),bad],backgroundColor:['#36d399','#ff6b6b']}]},options:{plugins:{legend:{labels:{color:'#dbe5ff'}}}}});const keys=['leaning_left','leaning_right','leaning_backward','leaning_forward'];postureChart=new Chart($('postureChart'),{type:'bar',data:{labels:keys.map(k=>DISPLAY[k]),datasets:[{label:'Phút',data:keys.map(k=>(byPosture[k]||0)/60),backgroundColor:'#6ea8fe'}]},options:{scales:{x:{ticks:{color:'#dbe5ff'}},y:{ticks:{color:'#dbe5ff'}}},plugins:{legend:{labels:{color:'#dbe5ff'}}}}})}
 function renderAlerts(rows){$('alertRows').innerHTML=rows.length?rows.map(a=>`<tr><td>${new Date(a.sent_at).toLocaleString('vi-VN')}</td><td>${DISPLAY[a.posture]||a.posture}</td><td>${a.duration_seconds}s</td><td>${MODEL_NAMES[a.model_key]||a.model_key||''}</td><td>${a.channel}</td></tr>`).join(''):'<tr><td colspan="5">Chưa có cảnh báo</td></tr>'}
 async function loadAdminConsole(){
   await Promise.all([loadAdminConfig(),loadModelRegistry(),loadEmailStatus()]);
@@ -751,15 +761,15 @@ async function runAdminImageTest(){
       const tensor=firstTensorFromOutput(out);
       if(!tensor)throw new Error('Model không trả về tensor kết quả.');
       const probs=Array.from(await tensor.data());
-      if(probs.length<CLASS_NAMES.length)throw new Error(`Output model chỉ có ${probs.length} giá trị, kỳ vọng ${CLASS_NAMES.length}.`);
+      const classNames=classNamesForProbabilities(probs);
       const max=Math.max(...probs);
       const idx=probs.indexOf(max);
-      const raw=CLASS_NAMES[idx]||'unknown';
+      const raw=classNames[idx]||'unknown';
       const threshold=getConfidenceThreshold();
       const shown=max>=threshold?raw:'unknown';
       $('adminTestPrediction').textContent=DISPLAY[shown]||shown;
       $('adminTestConfidence').textContent=`${(max*100).toFixed(2)}%`;
-      $('adminTestProbabilities').innerHTML=CLASS_NAMES.map((name,i)=>{
+      $('adminTestProbabilities').innerHTML=classNames.map((name,i)=>{
         const p=Number(probs[i]||0)*100;
         return `<div class="prob-row"><div class="prob-label"><span>${DISPLAY[name]||name}</span><strong>${p.toFixed(2)}%</strong></div><div class="prob-track"><div class="prob-fill" style="width:${Math.max(0,Math.min(100,p))}%"></div></div></div>`;
       }).join('');

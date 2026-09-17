@@ -1,6 +1,6 @@
 import nodemailer from 'nodemailer';
 import {requireUser,json,parseBody,isUuid} from './_shared.mjs';
-const DISPLAY={leaning_left:'nghiêng trái',leaning_right:'nghiêng phải',leaning_backward:'ngả về sau',upright:'tư thế đúng'};
+const DISPLAY={leaning_left:'nghiêng trái',leaning_right:'nghiêng phải',leaning_backward:'ngả về sau',leaning_forward:'nghiêng về trước',upright:'tư thế đúng'};
 export async function handler(event){
   try{
     const {user,db}=await requireUser(event);

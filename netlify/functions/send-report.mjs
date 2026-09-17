@@ -5,6 +5,7 @@ const DISPLAY = {
   leaning_left: 'Nghiêng trái',
   leaning_right: 'Nghiêng phải',
   leaning_backward: 'Ngả về sau',
+  leaning_forward: 'Nghiêng về trước',
   upright: 'Tư thế đúng'
 };
 
@@ -34,7 +35,7 @@ function formatDuration(seconds) {
 }
 
 function postureRows(by) {
-  const order = ['leaning_left', 'leaning_right', 'leaning_backward'];
+  const order = ['leaning_left', 'leaning_right', 'leaning_backward', 'leaning_forward'];
   return order.map((key) => ({
     key,
     label: DISPLAY[key],

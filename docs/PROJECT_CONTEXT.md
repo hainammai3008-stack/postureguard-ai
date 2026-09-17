@@ -1,5 +1,13 @@
 # Ngữ cảnh dự án PostureGuard AI
 
+## Cập nhật ứng dụng 5 nhãn — 2026-09-17
+
+- Đã `git fetch origin main`: remote vẫn ở `e3a6ff7`, không có commit mới hơn. Local đang có commit `59e39d2` về dataset/notebook, chưa push do GitHub CLI/git thiếu đăng nhập khi thử trước đó. Giữ nguyên các tệp local `colab/models/` và poster chưa được theo dõi.
+- Model SavedModel local `colab/models/posture_saved_model.zip` chứa `class_names.json` với thứ tự `leaning_backward`, `leaning_forward`, `leaning_left`, `leaning_right`, `upright`.
+- `app.js` v6.16.0 nhận cả output 4 lớp cũ và 5 lớp mới theo đúng thứ tự; thêm nhãn tiếng Việt, cảnh báo tiếng Anh, test ảnh Admin và biểu đồ cho `leaning_forward`. Backend event/email/report và `index.html` đã cập nhật.
+- Đã kiểm tra database production Supabase bằng SELECT: `posture_events_posture_check` cũ chỉ có bốn nhãn. Đã chạy `supabase/postureguard_migrate_forward_v6_16.sql` qua SQL Editor, sau đó SELECT xác nhận constraint `posture_events_posture_five_classes_check` có đủ năm nhãn. Chưa deploy ứng dụng hoặc activate model 5 lớp.
+- Kiểm thử local: `node --check` các file JS/MJS liên quan đạt; smoke test mapping output 4/5 lớp và lỗi số lớp khác đạt. Chưa chạy camera/browser end-to-end với GraphModel TensorFlow.js.
+
 ## Cập nhật dataset chuẩn — 2026-09-17
 
 - Quyết định mới nhất của người dùng: bộ dataset chuẩn có 5 nhãn `leaning_backward`, `leaning_forward`, `leaning_left`, `leaning_right`, `upright`; bỏ `head_down` vì sáu ZIP hiện có không có nhãn này.
@@ -38,7 +46,7 @@ Dự án AI nhận diện tư thế ngồi qua webcam, có quản trị mô hìn
 
 Chỉ hỗ trợ MobileNetV2, ResNet50, DenseNet121, EfficientNet-B0. Đã yêu cầu loại lựa chọn CNN cũ.
 
-Bốn nhãn tư thế: leaning_backward, leaning_left, leaning_right, upright. unknown là trạng thái dưới ngưỡng tin cậy, không phải lớp học thứ năm. Thứ tự đầu ra cần đối chiếu metadata của model trước khi sửa code.
+Năm nhãn tư thế mới: leaning_backward, leaning_forward, leaning_left, leaning_right, upright. Model cũ bốn nhãn vẫn được hỗ trợ theo thứ tự leaning_backward, leaning_left, leaning_right, upright. unknown là trạng thái dưới ngưỡng tin cậy, không phải lớp học. Thứ tự đầu ra phải đối chiếu metadata của từng model.
 
 ### Camera realtime
 
@@ -67,6 +75,7 @@ Webcam → crop vuông vùng trung tâm khoảng 90% → resize 224×224 → mod
   - Please sit straight. You are leaning left.
   - Please sit straight. You are leaning right.
   - Please sit straight. You are leaning backward.
+  - Please sit straight. You are leaning forward.
 - Sai tư thế quá thời gian cấu hình thì cảnh báo, tiếp tục sai thì lặp theo thời gian đó; ví dụ mỗi 10 giây.
 - unknown xen kẽ không reset timer; upright ổn định reset chu kỳ.
 - Ghi alert-log mỗi lần cảnh báo.

@@ -162,3 +162,8 @@ Realtime camera pipeline now uses MoveNet SinglePose Lightning to detect the sea
 - Redesigned session report email with responsive HTML cards, progress bar and detailed posture table.
 - Durations are shown in minutes + seconds instead of rounding short events to 0 minutes.
 - Keeps plain-text email fallback.
+
+## v6.16 Five posture labels
+- New five-output models use `leaning_backward`, `leaning_forward`, `leaning_left`, `leaning_right`, `upright` in that order. Existing four-output models remain supported.
+- Realtime, Admin image test, alerts, dashboard, and session email report display `leaning_forward`.
+- Existing databases need `supabase/postureguard_migrate_forward_v6_16.sql` before activating a five-output model. Check the live `posture_events` constraint before running it. The production database migration was applied and verified on 2026-09-17; do not rerun solely based on this README.

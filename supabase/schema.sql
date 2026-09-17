@@ -53,7 +53,7 @@ create table if not exists public.posture_events (
   user_id uuid not null references auth.users(id) on delete cascade,
   session_id uuid,
   posture text not null
-    check (posture in ('upright','leaning_left','leaning_right','leaning_backward')),
+    check (posture in ('upright','leaning_left','leaning_right','leaning_backward','leaning_forward')),
   confidence real not null default 0,
   model_key text not null default 'mobilenetv2',
   started_at timestamptz not null default now(),
