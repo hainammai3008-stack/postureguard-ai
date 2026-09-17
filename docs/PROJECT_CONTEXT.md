@@ -1,5 +1,12 @@
 # Ngữ cảnh dự án PostureGuard AI
 
+## Sửa export TensorFlow.js cho ba notebook — 2026-09-17
+
+- ZIP ResNet50 người dùng tải về đã giải nén tại `/Users/huymq85/private/postureguard-ai/resnet50_saved_model`; kiểm tra chữ ký `serving_default`: ảnh float32 224×224×3, đầu ra 5 xác suất, đúng thứ tự `class_names.json`.
+- Với TensorFlow 2.16.1 và tensorflowjs 4.22.0 trên máy hiện tại, convert artifact này thất bại trước tiên tại `random_rotation/.../AssignVariableOp` (`int64` thay vì `resource`); lỗi tiếp theo `AssertionError: Identity is not in graph` là hậu quả khi converter thử cách freeze khác. Đổi `signature_name` không sửa được.
+- Ô export của ResNet50, EfficientNet-B0 và DenseNet121 nay tạo model suy luận bằng backbone/pooling/dropout/head đã train, bỏ augmentation ngẫu nhiên khỏi graph, so sánh đầu ra với `best_model` trước khi export. Lệnh converter giữ nguyên.
+- Đã kiểm tra cú pháp các ô sửa và thử nghiệm model nhỏ cùng kiểu augmentation: đầu ra model suy luận khớp model gốc, xuất SavedModel và convert sang TFJS GraphModel thành công. Chưa chạy export/convert trên checkpoint ResNet50 mới vì checkpoint `.keras` hoặc runtime Colab chứa `best_model` không có trên máy này. ZIP ResNet cũ vẫn lỗi; cần chạy lại ô export và ZIP trong Colab, rồi tải ZIP mới để convert.
+
 ## Cập nhật ứng dụng 5 nhãn — 2026-09-17
 
 - Sửa lỗi export ResNet50 trên Colab (traceback `seed_generator`/`Failed to add concrete function` từ `tf.saved_model.save`): notebook ResNet50 và EfficientNet-B0 chuyển sang `best_model.export(...)` theo Keras 3, kiểm tra `serving_default` sau export. Chưa chạy export thực tế vì máy local không có TensorFlow; đã kiểm tra cú pháp tất cả ô Python. Người dùng có thể chạy lại từ ô export trong runtime Colab còn `best_model`.
