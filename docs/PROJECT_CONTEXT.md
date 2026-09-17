@@ -2,6 +2,8 @@
 
 ## Cập nhật ứng dụng 5 nhãn — 2026-09-17
 
+- Sửa lỗi export ResNet50 trên Colab (traceback `seed_generator`/`Failed to add concrete function` từ `tf.saved_model.save`): notebook ResNet50 và EfficientNet-B0 chuyển sang `best_model.export(...)` theo Keras 3, kiểm tra `serving_default` sau export. Chưa chạy export thực tế vì máy local không có TensorFlow; đã kiểm tra cú pháp tất cả ô Python. Người dùng có thể chạy lại từ ô export trong runtime Colab còn `best_model`.
+
 - Đã `git fetch origin main`: trước khi cập nhật, remote ở `e3a6ff7`, không có commit mới hơn. Hai commit `59e39d2` (dataset/notebook) và `714f72a` (ứng dụng 5 nhãn) đã push qua GitHub Desktop; `git ls-remote` xác nhận remote main ở `714f72a`. Giữ nguyên các tệp local `colab/models/` và poster chưa được theo dõi.
 - Model SavedModel local `colab/models/posture_saved_model.zip` chứa `class_names.json` với thứ tự `leaning_backward`, `leaning_forward`, `leaning_left`, `leaning_right`, `upright`.
 - `app.js` v6.16.0 nhận cả output 4 lớp cũ và 5 lớp mới theo đúng thứ tự; thêm nhãn tiếng Việt, cảnh báo tiếng Anh, test ảnh Admin và biểu đồ cho `leaning_forward`. Backend event/email/report và `index.html` đã cập nhật.
