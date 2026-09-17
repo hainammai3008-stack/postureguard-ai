@@ -1,5 +1,10 @@
 # Ngữ cảnh dự án PostureGuard AI
 
+## Lưu dataset ngoài Git — 2026-09-17
+
+- Theo yêu cầu mới của người dùng, bốn phần ZIP chuẩn 5 lớp và manifest được bỏ theo dõi trong Git; `.gitignore` chặn `colab/dataset_parts/` và `colab/models/`. Không xóa bản local khi bỏ khỏi index.
+- GitHub không còn chứa ảnh hoặc ZIP dataset. Giữ `posture_dataset_standard_5class.zip` ở nơi lưu trữ riêng và upload trực tiếp khi Colab yêu cầu. Script ghép parts chỉ dùng được nếu có các parts local.
+
 ## Sửa export TensorFlow.js cho ba notebook — 2026-09-17
 
 - ZIP ResNet50 người dùng tải về đã giải nén tại `/Users/huymq85/private/postureguard-ai/resnet50_saved_model`; kiểm tra chữ ký `serving_default`: ảnh float32 224×224×3, đầu ra 5 xác suất, đúng thứ tự `class_names.json`.
@@ -23,7 +28,7 @@
 - Bộ 5 lớp `colab/posture_dataset_standard_5class.zip` được tạo từ nguồn multiclass v5 (gộp ba split gốc rồi chia lại theo nhóm frame). Train 3.035 ảnh; val/test mỗi tập 400 ảnh, 80 ảnh/lớp. Loại 183 ảnh do frame gốc có nhãn mâu thuẫn.
 - Chưa sửa model/app hiện đang dùng 4 lớp để nhận `leaning_forward`; chưa train lại. Tất cả notebook cần cùng thứ tự nhãn 5 lớp và cùng split trước khi benchmark mới.
 - Bốn notebook Colab đã cập nhật để upload `posture_dataset_standard_5class.zip`, dùng cùng split cố định và nhãn theo đúng thứ tự; MobileNetV2 không còn tự chia dữ liệu; EfficientNet-B0 sửa từ code B1; gói SavedModel thêm `class_names.json`. Đã kiểm tra cấu trúc notebook và cú pháp các ô Python, chưa chạy train trên Colab/GPU.
-- Để đồng bộ GitHub, ZIP chuẩn 5 lớp được chia thành bốn phần dưới 40 MiB trong `colab/dataset_parts/`, có manifest SHA-256. Chạy `python3 scripts/assemble_standard_5class_dataset.py` sau khi clone để khôi phục ZIP. Source ZIP Roboflow gốc vẫn là tệp local, không đưa lên Git.
+- Trước đây ZIP chuẩn 5 lớp được chia thành bốn phần dưới 40 MiB trong `colab/dataset_parts/`. Các phần này nay chỉ giữ local, không còn được đồng bộ bằng GitHub. Script ghép chỉ dùng khi các phần đó sẵn có trên máy.
 
 - Sáu ZIP nguồn hiện ở `colab/dataset/`; là file local chưa commit. Không đưa ZIP/dataset lớn vào Git.
 - Đã tạo `scripts/build_standard_dataset.py` và bộ `colab/posture_dataset_standard/` từ nguồn multiclass v5. Split gốc của nguồn này thiếu lớp ở val/test, nên chỉ lấy phần train có đủ bốn nhãn rồi chia lại theo nhóm frame.

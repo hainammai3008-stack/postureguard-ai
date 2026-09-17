@@ -1,4 +1,4 @@
-"""Reassemble and verify the five-class dataset ZIP stored in GitHub parts."""
+"""Reassemble a five-class dataset ZIP from optional local parts."""
 
 import hashlib
 import json
