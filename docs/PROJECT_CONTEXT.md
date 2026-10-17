@@ -1,5 +1,14 @@
 # Ngữ cảnh dự án PostureGuard AI
 
+## Cảnh báo an toàn và đánh giá thực tế — 2026-10-17
+
+- Yêu cầu mới từ bảng ưu tiên: quyết định cảnh báo bằng tỷ lệ thời gian trong 15 giây gần nhất; câu nhắc tiếng Việt; hỗ trợ ghi nhắc đúng/nhắc nhầm/bỏ sót; thử confidence và thời gian chờ; nhắc nghỉ, tạm dừng camera và ghi chú AI chỉ mang tính ước lượng.
+- Source v6.18 triển khai cửa sổ thời gian 15 giây, chỉ cảnh báo khi tổng thời gian tư thế sai lớn hơn 50%; tư thế sai chiếm thời gian nhiều nhất được dùng cho lời nhắc. Confidence toàn hệ thống và thời gian lặp cá nhân vẫn cấu hình độc lập.
+- UI có ba phản hồi `correct_alert`, `incorrect_alert`, `missed_alert`; dashboard 7 ngày tổng hợp số lượng. Phản hồi chỉ lưu metadata, không lưu ảnh/video/frame webcam.
+- Câu cảnh báo và test âm thanh dùng tiếng Việt; phiên hoạt động khoảng 25 phút sẽ nhắc nghỉ. Tạm dừng giữ phiên nhưng dừng suy luận và khi tiếp tục sẽ tạo cửa sổ đánh giá 15 giây mới.
+- Migration `supabase/postureguard_migrate_feedback_evaluation_v6_18.sql` đã áp dụng trên production ngày 2026-10-17. Đã xác minh `feedback_type` NOT NULL, `alerted_at` nullable, constraint cho ba loại phản hồi và sáu giá trị posture, RLS bật và index `incorrect_alert_feedback_type_reported_idx` tồn tại.
+- Kiểm tra source đã qua `node --check`, `git diff --check`, kiểm tra ID DOM/metadata-only và test cửa sổ quyết định 8/15 giây có cảnh báo, 7/15 giây không cảnh báo. Còn cần deploy production và kiểm thử camera với học sinh thật; không coi kiểm thử thực địa là đã hoàn tất.
+
 ## Phản hồi cảnh báo nhầm — 2026-10-17
 
 - Yêu cầu mới: sau khi AI phát cảnh báo âm thanh, học sinh có nút **Nhắc sai rồi** để phản hồi cảnh báo nhầm.
@@ -106,7 +115,7 @@ Webcam → crop vuông vùng trung tâm khoảng 90% → resize 224×224 → mod
 - Repository: https://github.com/hainammai3008-stack/postureguard-ai
 - Nhánh chính: main.
 - Commit ứng dụng đã pull: d99f417 — system confidence.
-- app.js hiện khai báo APP_VERSION=6.17.0; package.json vẫn ghi 5.0.0, nên không suy ra phiên bản tính năng chỉ từ package.json.
+- app.js hiện khai báo APP_VERSION=6.18.0; package.json vẫn ghi 5.0.0, nên không suy ra phiên bản tính năng chỉ từ package.json.
 - Dự án sidebar Codex: postureguard-ai. Trên máy hiện tại, thư mục source là /Users/huymq85/private/postureguard-ai/projects/postureguard-ai. Máy khác có thể dùng đường dẫn khác.
 - Đã kiểm tra source: bốn model, confidence mặc định 0.50, trung bình 10 frame, khoảng cách 250 ms, crop 0.90, các câu cảnh báo tiếng Anh và luồng prepare/upload/finalize đều có trong code.
 - Khi pull bằng --ff-only --autostash, hai file app.js và netlify/functions/upload-model.mjs bị conflict với phần sửa upload local cũ. Đã giữ phiên bản mới từ GitHub vì luồng multipart cũ đã được thay thế.

@@ -280,6 +280,16 @@ video{
   margin-top:16px;
 }
 .incorrect-alert-feedback .hint{color:var(--muted)}
+.ai-disclaimer{
+  margin:12px 0 0;
+  padding:11px 13px;
+  border-left:3px solid var(--warn);
+  background:rgba(243,198,78,.08);
+  color:#ffe7a1;
+  font-size:13px;
+  line-height:1.5;
+}
+.feedback-kpis{grid-template-columns:repeat(3,1fr)}
 
 .message{
   margin-top:16px;

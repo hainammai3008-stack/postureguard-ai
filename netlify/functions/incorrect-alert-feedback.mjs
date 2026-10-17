@@ -1,6 +1,8 @@
 import {isUuid,json,parseBody,requireUser} from './_shared.mjs';
 
-const allowedPostures=new Set(['leaning_left','leaning_right','leaning_backward','leaning_forward']);
+const badPostures=new Set(['leaning_left','leaning_right','leaning_backward','leaning_forward']);
+const allowedPostures=new Set([...badPostures,'upright','unknown']);
+const allowedFeedbackTypes=new Set(['correct_alert','incorrect_alert','missed_alert']);
 
 export async function handler(event){
   try{
@@ -8,9 +10,13 @@ export async function handler(event){
     if(event.httpMethod!=='POST')return json(405,{error:'Method not allowed'});
     const body=parseBody(event);
     if(!isUuid(body.session_id))return json(400,{error:'session_id không hợp lệ'});
+    const feedbackType=String(body.feedback_type||'incorrect_alert');
+    if(!allowedFeedbackTypes.has(feedbackType))return json(400,{error:'feedback_type không hợp lệ'});
     if(!allowedPostures.has(body.posture))return json(400,{error:'posture không hợp lệ'});
-    const alertedAt=new Date(body.alerted_at);
-    if(!Number.isFinite(alertedAt.getTime()))return json(400,{error:'alerted_at không hợp lệ'});
+    const isMissed=feedbackType==='missed_alert';
+    if(!isMissed&&!badPostures.has(body.posture))return json(400,{error:'Phản hồi cảnh báo cần một tư thế sai hợp lệ'});
+    const alertedAt=isMissed?null:new Date(body.alerted_at);
+    if(!isMissed&&!Number.isFinite(alertedAt.getTime()))return json(400,{error:'alerted_at không hợp lệ'});
 
     const {data:session,error:sessionError}=await db
       .from('monitor_sessions')
@@ -19,7 +25,7 @@ export async function handler(event){
       .eq('user_id',user.id)
       .single();
     if(sessionError||!session)return json(404,{error:'Không tìm thấy phiên theo dõi'});
-    if(alertedAt.getTime()<new Date(session.started_at).getTime()-1000||alertedAt.getTime()>Date.now()+60000){
+    if(!isMissed&&(alertedAt.getTime()<new Date(session.started_at).getTime()-1000||alertedAt.getTime()>Date.now()+60000)){
       return json(400,{error:'Thời điểm cảnh báo không hợp lệ'});
     }
 
@@ -27,8 +33,9 @@ export async function handler(event){
     const {error}=await db.from('incorrect_alert_feedback').insert({
       user_id:user.id,
       session_id:body.session_id,
+      feedback_type:feedbackType,
       posture:body.posture,
-      alerted_at:alertedAt.toISOString(),
+      alerted_at:alertedAt?.toISOString()||null,
       reported_at:reportedAt
     });
     if(error){

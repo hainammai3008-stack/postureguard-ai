@@ -4,8 +4,8 @@ const supabase = createClient(CFG.SUPABASE_URL, CFG.SUPABASE_ANON_KEY);
 
 const CLASS_NAMES = ['leaning_backward','leaning_forward','leaning_left','leaning_right','upright'];
 const LEGACY_CLASS_NAMES = ['leaning_backward','leaning_left','leaning_right','upright'];
-const APP_VERSION='6.17.0';
-const ALERT_SPEECH={leaning_left:'Please sit straight. You are leaning left.',leaning_right:'Please sit straight. You are leaning right.',leaning_backward:'Please sit straight. You are leaning backward.',leaning_forward:'Please sit straight. You are leaning forward.'};
+const APP_VERSION='6.18.0';
+const ALERT_SPEECH={leaning_left:'Bạn đang nghiêng sang trái. Hãy ngồi thẳng lại nhé.',leaning_right:'Bạn đang nghiêng sang phải. Hãy ngồi thẳng lại nhé.',leaning_backward:'Bạn đang ngả về sau. Hãy điều chỉnh tư thế nhé.',leaning_forward:'Bạn đang nghiêng về trước. Hãy ngồi thẳng lại nhé.'};
 console.log('[PostureGuard] app version', APP_VERSION);
 const CORRECT_CLASS = 'upright';
 const DEFAULT_MIN_CONFIDENCE = 0.50;
@@ -23,6 +23,8 @@ const POSE_BOX_TTL_MS = 2000;
 const HYSTERESIS_FRAMES = 3;
 const POSE_ASSIST_BOOST = 0.05;
 const POSE_LEAN_THRESHOLD = 0.10; // normalized shoulder-vs-hip horizontal offset
+const ALERT_DECISION_WINDOW_MS = 15000;
+const BREAK_REMINDER_MS = 25*60*1000;
 
 
 const MODEL_NAMES = {
@@ -59,6 +61,7 @@ let model = null;
 let activeModelCacheKey = null;
 let stream = null;
 let cameraRunning = false;
+let cameraPaused = false;
 let predictLoopToken = 0;
 let probabilityHistory = [];
 let poseDetector = null;
@@ -73,6 +76,11 @@ let postureCandidateCount = 0;
 let badStartAt = null;
 let lastAlertAt = 0;
 let latestAlertFeedback = null;
+let postureDecisionHistory = [];
+let decisionWindowStartedAt = 0;
+let sessionActiveStartedAt = 0;
+let activeElapsedBeforePause = 0;
+let breakReminderPlayed = false;
 let sessionId = null;
 let currentEpisode = null;
 let ratioChart = null;
@@ -610,20 +618,139 @@ function applyPostureHysteresis(candidate){
   return stablePostureLabel;
 }
 
-function resetIncorrectAlertFeedback(){latestAlertFeedback=null;$('incorrectAlertBtn').disabled=true;$('incorrectAlertStatus').textContent='Nút sẽ bật sau khi AI phát cảnh báo.'}
-function offerIncorrectAlertFeedback(posture,alertedAt){latestAlertFeedback={posture,alertedAt,reported:false};$('incorrectAlertBtn').disabled=false;$('incorrectAlertStatus').textContent=`AI vừa cảnh báo: ${DISPLAY[posture]||posture}.`}
-async function reportIncorrectAlert(){const feedback=latestAlertFeedback;if(!feedback||feedback.reported||!sessionId)return;const btn=$('incorrectAlertBtn');btn.disabled=true;$('incorrectAlertStatus').textContent='Đang ghi nhận phản hồi…';try{const result=await userApi('incorrect-alert-feedback',{method:'POST',body:JSON.stringify({session_id:sessionId,posture:feedback.posture,alerted_at:feedback.alertedAt})});feedback.reported=true;const respondedAt=new Date(result.reported_at);$('incorrectAlertStatus').textContent=`Đã ghi nhận lúc ${respondedAt.toLocaleTimeString('vi-VN')}. Cảm ơn bạn.`}catch(e){console.error('Không ghi được phản hồi cảnh báo:',e);$('incorrectAlertStatus').textContent=`Không thể ghi nhận: ${e.message}`;btn.disabled=false}}
-
-async function startCamera(){if(!model)return alert('Model chưa sẵn sàng');try{msg($('cameraMessage'),'info','Đang khởi tạo MoveNet pose detection…');await ensurePoseDetector();stream=await navigator.mediaDevices.getUserMedia({video:{facingMode:'user',width:{ideal:960},height:{ideal:720}},audio:false});$('video').srcObject=stream;cameraRunning=true;probabilityHistory=[];personBox=null;lastPoseAt=0;lastPoseSuccessAt=0;poseQualityOk=false;poseLeanHint=null;stablePostureLabel='unknown';postureCandidateLabel=null;postureCandidateCount=0;badStartAt=null;lastAlertAt=0;currentEpisode=null;resetIncorrectAlertFeedback();sessionId=crypto.randomUUID();await userApi('session',{method:'POST',body:JSON.stringify({action:'start',session_id:sessionId,model_key:systemConfig.selected_model})});$('startCamera').disabled=true;$('stopCamera').disabled=false;$('emailReportState').textContent='Chưa gửi';msg($('cameraMessage'),'info','Camera đã bật. MoveNet đang tự định vị người.');const token=++predictLoopToken;predictLoop(token)}catch(e){console.error(e);msg($('cameraMessage'),'error',`Không thể bật camera/pose detection: ${e.message}`)}}
-async function stopCamera(){cameraRunning=false;++predictLoopToken;probabilityHistory=[];personBox=null;lastPoseAt=0;lastPoseSuccessAt=0;poseQualityOk=false;poseLeanHint=null;stablePostureLabel='unknown';postureCandidateLabel=null;postureCandidateCount=0;drawPoseBox(null);if(currentEpisode)await closeEpisode(Date.now());if(stream)stream.getTracks().forEach(t=>t.stop());stream=null;$('video').srcObject=null;$('startCamera').disabled=false;$('stopCamera').disabled=true;resetIncorrectAlertFeedback();if(sessionId){await userApi('session',{method:'POST',body:JSON.stringify({action:'stop',session_id:sessionId})});if(profile?.email_enabled){try{$('emailReportState').textContent='Đang gửi…';await userApi('send-report',{method:'POST',body:JSON.stringify({session_id:sessionId})});$('emailReportState').textContent='Đã gửi'}catch(e){console.error(e);$('emailReportState').textContent='Lỗi gửi'}}}sessionId=null;setState('idle','Đã tắt camera')}
-async function predictLoop(token){while(cameraRunning&&token===predictLoopToken){const video=$('video');if(video.readyState>=2){try{const now=Date.now();if(now-lastPoseAt>=POSE_INTERVAL_MS){lastPoseAt=now;const detected=await detectPersonBox(video);if(detected.box){personBox=detected.box;lastPoseSuccessAt=now;poseQualityOk=detected.qualityOk;poseLeanHint=detected.leanHint;drawPoseBox(personBox,'detected',detected.qualityOk?(detected.qualityReason==='upper-body-ok-hip-hidden'?'upper body detected • hip partially hidden':'good pose'):`low pose quality • ${detected.qualityReason||'unknown'}`)}else if(personBox && now-lastPoseSuccessAt<=POSE_BOX_TTL_MS){poseQualityOk=false;poseLeanHint=null;drawPoseBox(personBox,'cached')}else{personBox=null;poseQualityOk=false;poseLeanHint=null;drawPoseBox(null,'missing')}}const rawProbs=await inferCamera(video,personBox);const r=weightedAverageProbabilities(rawProbs,poseLeanHint);const qualityAllowsPrediction=poseQualityOk || (personBox && now-lastPoseSuccessAt<=POSE_BOX_TTL_MS);const candidate=qualityAllowsPrediction?r.rawLabel:'unknown';const finalLabel=applyPostureHysteresis(candidate);await handlePosture(finalLabel,r.confidence)}catch(e){console.error('[realtime pipeline]',e)}}await sleep(PREDICT_INTERVAL_MS)}}
-async function handlePosture(label,confidence){const now=Date.now();$('confidence').textContent=`${(confidence*100).toFixed(1)}%`;if(!currentEpisode||currentEpisode.label!==label){if(currentEpisode)await closeEpisode(now);currentEpisode={label,startedAt:now,maxConfidence:confidence}}else currentEpisode.maxConfidence=Math.max(currentEpisode.maxConfidence,confidence);if(label===CORRECT_CLASS){badStartAt=null;lastAlertAt=0;$('badDuration').textContent='0.0s';$('localAlertState').textContent='Chưa';setState('good','✅ Tư thế đúng');msg($('cameraMessage'),'ok','Bạn đang ngồi đúng tư thế.');return}if(label==='unknown'){setState('unknown','⚠️ Chưa xác định');return}if(!badStartAt){badStartAt=now;lastAlertAt=0}const seconds=(now-badStartAt)/1000;$('badDuration').textContent=`${seconds.toFixed(1)}s`;setState('bad',`❌ ${DISPLAY[label]}`);msg($('cameraMessage'),'error',`Phát hiện ${DISPLAY[label].toLowerCase()} trong ${seconds.toFixed(0)} giây.`);const alertSeconds=Math.max(1,Number(profile.local_alert_seconds||10));const alertMs=alertSeconds*1000;if(seconds>=alertSeconds&&(lastAlertAt===0||now-lastAlertAt>=alertMs)){lastAlertAt=now;const alertedAt=new Date(now).toISOString();offerIncorrectAlertFeedback(label,alertedAt);$('localAlertState').textContent=`Đã cảnh báo • lặp mỗi ${alertSeconds}s`;try{await speak(ALERT_SPEECH[label] || 'Please sit straight and correct your posture.')}catch(e){console.error('Không phát được cảnh báo âm thanh:',e)}try{await userApi('alert-log',{method:'POST',body:JSON.stringify({session_id:sessionId,posture:label,duration_seconds:Math.round(seconds),model_key:systemConfig.selected_model,channel:'audio'})})}catch(e){console.error('Không ghi được alert-log:',e)}}}
+function resetIncorrectAlertFeedback(){
+  latestAlertFeedback=null;
+  $('correctAlertBtn').disabled=true;
+  $('incorrectAlertBtn').disabled=true;
+  $('incorrectAlertStatus').textContent='“Nhắc đúng/sai” sẽ bật sau cảnh báo; “AI bỏ sót” dùng khi camera đang chạy.';
+}
+function offerAlertFeedback(posture,alertedAt){
+  latestAlertFeedback={posture,alertedAt,reported:false};
+  $('correctAlertBtn').disabled=false;
+  $('incorrectAlertBtn').disabled=false;
+  $('incorrectAlertStatus').textContent=`AI vừa cảnh báo: ${DISPLAY[posture]||posture}. Cảnh báo này đúng hay nhầm?`;
+}
+async function reportAlertFeedback(feedbackType){
+  const isMissed=feedbackType==='missed_alert';
+  const feedback=isMissed?{posture:stablePostureLabel,alertedAt:null,reported:false}:latestAlertFeedback;
+  if(!feedback||feedback.reported||!sessionId)return;
+  const buttons=[$('correctAlertBtn'),$('incorrectAlertBtn'),$('missedAlertBtn')];
+  buttons.forEach(button=>button.disabled=true);
+  $('incorrectAlertStatus').textContent='Đang ghi nhận phản hồi…';
+  try{
+    const result=await userApi('incorrect-alert-feedback',{method:'POST',body:JSON.stringify({
+      session_id:sessionId,
+      feedback_type:feedbackType,
+      posture:feedback.posture,
+      alerted_at:feedback.alertedAt
+    })});
+    feedback.reported=true;
+    if(!isMissed)latestAlertFeedback.reported=true;
+    const respondedAt=new Date(result.reported_at);
+    const labels={correct_alert:'nhắc đúng',incorrect_alert:'nhắc nhầm',missed_alert:'AI bỏ sót'};
+    $('incorrectAlertStatus').textContent=`Đã ghi nhận “${labels[feedbackType]}” lúc ${respondedAt.toLocaleTimeString('vi-VN')}.`;
+    if(cameraRunning&&!cameraPaused)$('missedAlertBtn').disabled=false;
+  }catch(e){
+    console.error('Không ghi được phản hồi cảnh báo:',e);
+    $('incorrectAlertStatus').textContent=`Không thể ghi nhận: ${e.message}`;
+    if(isMissed&&cameraRunning&&!cameraPaused)$('missedAlertBtn').disabled=false;
+    if(!isMissed&&latestAlertFeedback&&!latestAlertFeedback.reported){
+      $('correctAlertBtn').disabled=false;
+      $('incorrectAlertBtn').disabled=false;
+    }
+  }
+}
+function evaluateAlertWindow(label,now){
+  postureDecisionHistory.push({label,at:now});
+  const cutoff=now-ALERT_DECISION_WINDOW_MS;
+  const beforeCutoff=[...postureDecisionHistory].reverse().find(item=>item.at<=cutoff);
+  const recent=postureDecisionHistory.filter(item=>item.at>cutoff);
+  postureDecisionHistory=beforeCutoff?[beforeCutoff,...recent]:recent;
+  const durations={};let totalMs=0;
+  postureDecisionHistory.forEach((item,index)=>{
+    const start=Math.max(item.at,cutoff);
+    const end=index+1<postureDecisionHistory.length?postureDecisionHistory[index+1].at:now;
+    const duration=Math.max(0,end-start);
+    durations[item.label]=(durations[item.label]||0)+duration;
+    totalMs+=duration;
+  });
+  const badEntries=Object.entries(durations).filter(([posture])=>posture!==CORRECT_CLASS&&posture!=='unknown');
+  const badMs=badEntries.reduce((sum,[,duration])=>sum+duration,0);
+  const dominant=badEntries.sort((a,b)=>b[1]-a[1])[0]?.[0]||null;
+  const ready=now-decisionWindowStartedAt>=ALERT_DECISION_WINDOW_MS;
+  return {ready,shouldAlert:ready&&totalMs>0&&badMs>totalMs/2,posture:dominant,badSeconds:badMs/1000};
+}
+async function maybeRemindBreak(){
+  if(breakReminderPlayed||!cameraRunning||cameraPaused)return;
+  const activeMs=activeElapsedBeforePause+(Date.now()-sessionActiveStartedAt);
+  if(activeMs<BREAK_REMINDER_MS)return;
+  breakReminderPlayed=true;
+  msg($('cameraMessage'),'info','Bạn đã học khoảng 25 phút. Hãy nghỉ ngắn, vận động và thư giãn mắt nhé.');
+  try{await speak('Bạn đã học khoảng hai mươi lăm phút. Hãy nghỉ ngắn, vận động và thư giãn mắt nhé.')}catch(e){console.error('Không phát được nhắc nghỉ:',e)}
+}
+async function toggleCameraPause(){
+  if(!cameraRunning)return;
+  if(!cameraPaused){
+    cameraPaused=true;
+    ++predictLoopToken;
+    activeElapsedBeforePause+=Math.max(0,Date.now()-sessionActiveStartedAt);
+    if(currentEpisode)await closeEpisode(Date.now());
+    stream?.getVideoTracks().forEach(track=>{track.enabled=false});
+    $('video').pause();
+    drawPoseBox(null);
+    $('pauseCamera').textContent='Tiếp tục';
+    $('missedAlertBtn').disabled=true;
+    $('localAlertState').textContent='Tạm dừng';
+    window.speechSynthesis?.cancel?.();
+    msg($('cameraMessage'),'info','Camera đang tạm dừng. Không có suy luận tư thế trong thời gian này.');
+    return;
+  }
+  stream?.getVideoTracks().forEach(track=>{track.enabled=true});
+  await $('video').play();
+  cameraPaused=false;
+  sessionActiveStartedAt=Date.now();
+  postureDecisionHistory=[];
+  decisionWindowStartedAt=Date.now();
+  stablePostureLabel='unknown';
+  postureCandidateLabel=null;
+  postureCandidateCount=0;
+  $('pauseCamera').textContent='Tạm dừng';
+  $('missedAlertBtn').disabled=false;
+  msg($('cameraMessage'),'info','Đã tiếp tục. AI đang thu thập cửa sổ đánh giá 15 giây mới.');
+  predictLoop(++predictLoopToken);
+}
+async function startCamera(){if(!model)return alert('Model chưa sẵn sàng');try{msg($('cameraMessage'),'info','Đang khởi tạo MoveNet pose detection…');await ensurePoseDetector();stream=await navigator.mediaDevices.getUserMedia({video:{facingMode:'user',width:{ideal:960},height:{ideal:720}},audio:false});$('video').srcObject=stream;cameraRunning=true;cameraPaused=false;probabilityHistory=[];postureDecisionHistory=[];decisionWindowStartedAt=Date.now();sessionActiveStartedAt=Date.now();activeElapsedBeforePause=0;breakReminderPlayed=false;personBox=null;lastPoseAt=0;lastPoseSuccessAt=0;poseQualityOk=false;poseLeanHint=null;stablePostureLabel='unknown';postureCandidateLabel=null;postureCandidateCount=0;badStartAt=null;lastAlertAt=0;currentEpisode=null;resetIncorrectAlertFeedback();sessionId=crypto.randomUUID();await userApi('session',{method:'POST',body:JSON.stringify({action:'start',session_id:sessionId,model_key:systemConfig.selected_model})});$('startCamera').disabled=true;$('pauseCamera').disabled=false;$('pauseCamera').textContent='Tạm dừng';$('stopCamera').disabled=false;$('missedAlertBtn').disabled=false;$('emailReportState').textContent='Chưa gửi';msg($('cameraMessage'),'info','Camera đã bật. AI đang thu thập cửa sổ đánh giá 15 giây.');const token=++predictLoopToken;predictLoop(token)}catch(e){console.error(e);msg($('cameraMessage'),'error',`Không thể bật camera/pose detection: ${e.message}`)}}
+async function stopCamera(){cameraRunning=false;cameraPaused=false;++predictLoopToken;probabilityHistory=[];postureDecisionHistory=[];personBox=null;lastPoseAt=0;lastPoseSuccessAt=0;poseQualityOk=false;poseLeanHint=null;stablePostureLabel='unknown';postureCandidateLabel=null;postureCandidateCount=0;drawPoseBox(null);if(currentEpisode)await closeEpisode(Date.now());if(stream)stream.getTracks().forEach(t=>t.stop());stream=null;$('video').srcObject=null;$('startCamera').disabled=false;$('pauseCamera').disabled=true;$('pauseCamera').textContent='Tạm dừng';$('stopCamera').disabled=true;$('missedAlertBtn').disabled=true;resetIncorrectAlertFeedback();if(sessionId){await userApi('session',{method:'POST',body:JSON.stringify({action:'stop',session_id:sessionId})});if(profile?.email_enabled){try{$('emailReportState').textContent='Đang gửi…';await userApi('send-report',{method:'POST',body:JSON.stringify({session_id:sessionId})});$('emailReportState').textContent='Đã gửi'}catch(e){console.error(e);$('emailReportState').textContent='Lỗi gửi'}}}sessionId=null;setState('idle','Đã tắt camera')}
+async function predictLoop(token){while(cameraRunning&&!cameraPaused&&token===predictLoopToken){await maybeRemindBreak();const video=$('video');if(video.readyState>=2){try{const now=Date.now();if(now-lastPoseAt>=POSE_INTERVAL_MS){lastPoseAt=now;const detected=await detectPersonBox(video);if(detected.box){personBox=detected.box;lastPoseSuccessAt=now;poseQualityOk=detected.qualityOk;poseLeanHint=detected.leanHint;drawPoseBox(personBox,'detected',detected.qualityOk?(detected.qualityReason==='upper-body-ok-hip-hidden'?'upper body detected • hip partially hidden':'good pose'):`low pose quality • ${detected.qualityReason||'unknown'}`)}else if(personBox && now-lastPoseSuccessAt<=POSE_BOX_TTL_MS){poseQualityOk=false;poseLeanHint=null;drawPoseBox(personBox,'cached')}else{personBox=null;poseQualityOk=false;poseLeanHint=null;drawPoseBox(null,'missing')}}const rawProbs=await inferCamera(video,personBox);const r=weightedAverageProbabilities(rawProbs,poseLeanHint);const qualityAllowsPrediction=poseQualityOk || (personBox && now-lastPoseSuccessAt<=POSE_BOX_TTL_MS);const candidate=qualityAllowsPrediction?r.rawLabel:'unknown';const finalLabel=applyPostureHysteresis(candidate);await handlePosture(finalLabel,r.confidence)}catch(e){console.error('[realtime pipeline]',e)}}await sleep(PREDICT_INTERVAL_MS)}}
+async function handlePosture(label,confidence){
+  const now=Date.now();
+  $('confidence').textContent=`${(confidence*100).toFixed(1)}%`;
+  if(!currentEpisode||currentEpisode.label!==label){if(currentEpisode)await closeEpisode(now);currentEpisode={label,startedAt:now,maxConfidence:confidence}}else currentEpisode.maxConfidence=Math.max(currentEpisode.maxConfidence,confidence);
+  if(label===CORRECT_CLASS){setState('good','✅ Tư thế đúng');msg($('cameraMessage'),'ok','Bạn đang ngồi đúng tư thế.')}else if(label==='unknown'){setState('unknown','⚠️ Chưa xác định')}else{setState('bad',`❌ ${DISPLAY[label]}`);msg($('cameraMessage'),'error',`Hiện tại AI nhận diện: ${DISPLAY[label].toLowerCase()}.`)}
+  const decision=evaluateAlertWindow(label,now);
+  $('badDuration').textContent=`${Math.min(15,decision.badSeconds).toFixed(1)}s / 15s`;
+  if(!decision.shouldAlert||!decision.posture){
+    badStartAt=null;
+    $('localAlertState').textContent=decision.ready?'Không cảnh báo':'Đang đánh giá 15 giây';
+    return;
+  }
+  badStartAt=badStartAt||now;
+  const repeatSeconds=Math.max(3,Number(profile.local_alert_seconds||10));
+  const repeatMs=repeatSeconds*1000;
+  if(lastAlertAt===0||now-lastAlertAt>=repeatMs){
+    lastAlertAt=now;
+    const alertedAt=new Date(now).toISOString();
+    offerAlertFeedback(decision.posture,alertedAt);
+    $('localAlertState').textContent=`Đã cảnh báo • lặp sau ${repeatSeconds}s nếu đa số vẫn sai`;
+    try{await speak(ALERT_SPEECH[decision.posture]||'Bạn hãy điều chỉnh và ngồi thẳng lại nhé.')}catch(e){console.error('Không phát được cảnh báo âm thanh:',e)}
+    try{await userApi('alert-log',{method:'POST',body:JSON.stringify({session_id:sessionId,posture:decision.posture,duration_seconds:Math.round(decision.badSeconds),model_key:systemConfig.selected_model,channel:'audio'})})}catch(e){console.error('Không ghi được alert-log:',e)}
+  }
+}
 async function closeEpisode(endedAt){const ep=currentEpisode;currentEpisode=null;if(!ep||!sessionId||ep.label==='unknown')return;await userApi('event',{method:'POST',body:JSON.stringify({session_id:sessionId,posture:ep.label,confidence:ep.maxConfidence,started_at:new Date(ep.startedAt).toISOString(),duration_seconds:Math.max(1,Math.round((endedAt-ep.startedAt)/1000)),model_key:systemConfig.selected_model})})}
-function getEnglishVoice(){
+function getVietnameseVoice(){
   const voices=window.speechSynthesis?.getVoices?.() || [];
-  return voices.find(v=>/^en-US$/i.test(v.lang))
-      || voices.find(v=>/^en-GB$/i.test(v.lang))
-      || voices.find(v=>/^en/i.test(v.lang))
+  return voices.find(v=>/^vi-VN$/i.test(v.lang))
+      || voices.find(v=>/^vi/i.test(v.lang))
       || null;
 }
 
@@ -636,9 +763,9 @@ function speak(text){
     try{
       speechSynthesis.cancel();
       const u=new SpeechSynthesisUtterance(text);
-      u.lang='en-US';
-      const englishVoice=getEnglishVoice();
-      if(englishVoice) u.voice=englishVoice;
+      u.lang='vi-VN';
+      const vietnameseVoice=getVietnameseVoice();
+      if(vietnameseVoice) u.voice=vietnameseVoice;
       u.volume=1;
       u.rate=1;
       u.pitch=1;
@@ -655,7 +782,7 @@ async function testSound(){
   if(btn)btn.disabled=true;
   try{
     msg($('settingsMessage'),'info','Đang phát âm thanh thử…');
-    await speak('PostureGuard AI is ready to alert your posture.');
+    await speak('PostureGuard AI đã sẵn sàng nhắc bạn điều chỉnh tư thế.');
     msg($('settingsMessage'),'ok','Âm thanh hoạt động bình thường.');
   }catch(e){
     console.error('TEST SOUND ERROR:',e);
@@ -665,7 +792,7 @@ async function testSound(){
   }
 }
 function setState(kind,text){$('postureState').textContent=text;$('postureState').className=`state state-${kind}`}
-async function loadDashboard(){try{const data=await userApi('dashboard?days=7',{method:'GET'}),monitored=Number(data.monitored_seconds||0),bad=Number(data.bad_seconds||0),correct=monitored>0?Math.max(0,(monitored-bad)/monitored*100):0;$('kpiMonitor').textContent=`${Math.round(monitored/60)} phút`;$('kpiBad').textContent=`${Math.round(bad/60)} phút`;$('kpiCorrect').textContent=monitored?`${correct.toFixed(1)}%`:'--';$('kpiAlerts').textContent=data.alerts?.length||0;renderCharts(monitored,bad,data.bad_by_posture||{});renderAlerts(data.alerts||[])}catch(e){console.error(e)}}
+async function loadDashboard(){try{const data=await userApi('dashboard?days=7',{method:'GET'}),monitored=Number(data.monitored_seconds||0),bad=Number(data.bad_seconds||0),correct=monitored>0?Math.max(0,(monitored-bad)/monitored*100):0,feedback=data.feedback_summary||{};$('kpiMonitor').textContent=`${Math.round(monitored/60)} phút`;$('kpiBad').textContent=`${Math.round(bad/60)} phút`;$('kpiCorrect').textContent=monitored?`${correct.toFixed(1)}%`:'--';$('kpiAlerts').textContent=data.alerts?.length||0;$('kpiCorrectAlerts').textContent=feedback.correct_alert||0;$('kpiIncorrectAlerts').textContent=feedback.incorrect_alert||0;$('kpiMissedAlerts').textContent=feedback.missed_alert||0;renderCharts(monitored,bad,data.bad_by_posture||{});renderAlerts(data.alerts||[])}catch(e){console.error(e)}}
 function renderCharts(monitored,bad,byPosture){if(ratioChart)ratioChart.destroy();if(postureChart)postureChart.destroy();ratioChart=new Chart($('ratioChart'),{type:'doughnut',data:{labels:['Ngồi đúng','Ngồi sai'],datasets:[{data:[Math.max(0,monitored-bad),bad],backgroundColor:['#36d399','#ff6b6b']}]},options:{plugins:{legend:{labels:{color:'#dbe5ff'}}}}});const keys=['leaning_left','leaning_right','leaning_backward','leaning_forward'];postureChart=new Chart($('postureChart'),{type:'bar',data:{labels:keys.map(k=>DISPLAY[k]),datasets:[{label:'Phút',data:keys.map(k=>(byPosture[k]||0)/60),backgroundColor:'#6ea8fe'}]},options:{scales:{x:{ticks:{color:'#dbe5ff'}},y:{ticks:{color:'#dbe5ff'}}},plugins:{legend:{labels:{color:'#dbe5ff'}}}}})}
 function renderAlerts(rows){$('alertRows').innerHTML=rows.length?rows.map(a=>`<tr><td>${new Date(a.sent_at).toLocaleString('vi-VN')}</td><td>${DISPLAY[a.posture]||a.posture}</td><td>${a.duration_seconds}s</td><td>${MODEL_NAMES[a.model_key]||a.model_key||''}</td><td>${a.channel}</td></tr>`).join(''):'<tr><td colspan="5">Chưa có cảnh báo</td></tr>'}
 async function loadAdminConsole(){
@@ -945,8 +1072,11 @@ $('homeStartCamera').addEventListener('click', () => openUserTab('camera'));
 $('homeOpenDashboard').addEventListener('click', () => openUserTab('dashboard'));
 
 $('startCamera').addEventListener('click', startCamera);
+$('pauseCamera').addEventListener('click', toggleCameraPause);
 $('stopCamera').addEventListener('click', stopCamera);
-$('incorrectAlertBtn').addEventListener('click', reportIncorrectAlert);
+$('correctAlertBtn').addEventListener('click',()=>reportAlertFeedback('correct_alert'));
+$('incorrectAlertBtn').addEventListener('click',()=>reportAlertFeedback('incorrect_alert'));
+$('missedAlertBtn').addEventListener('click',()=>reportAlertFeedback('missed_alert'));
 $('saveSettings').addEventListener('click', saveSettings);
 $('testSoundBtn').addEventListener('click', testSound);
 $('refreshDashboard').addEventListener('click', loadDashboard);

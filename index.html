@@ -139,6 +139,7 @@
             <h2>Camera realtime</h2>
             <div class="actions">
               <button id="startCamera" class="primary">Bật camera</button>
+              <button id="pauseCamera" class="secondary" disabled>Tạm dừng</button>
               <button id="stopCamera" class="secondary" disabled>Tắt camera</button>
             </div>
           </div>
@@ -155,13 +156,16 @@
           <div id="postureState" class="state state-idle">Chưa bật camera</div>
           <div class="metric-row"><span>Model hệ thống</span><strong id="activeModelName">--</strong></div>
           <div class="metric-row"><span>Độ tin cậy</span><strong id="confidence">--</strong></div>
-          <div class="metric-row"><span>Ngồi sai liên tục</span><strong id="badDuration">0.0s</strong></div>
+          <div class="metric-row"><span>Tư thế sai trong 15 giây</span><strong id="badDuration">0.0s / 15s</strong></div>
           <div class="metric-row"><span>Cảnh báo âm thanh</span><strong id="localAlertState">Chưa</strong></div>
           <div class="metric-row"><span>Báo cáo phụ huynh</span><strong id="emailReportState">Chưa gửi</strong></div>
           <div class="incorrect-alert-feedback">
+            <button id="correctAlertBtn" class="secondary" type="button" disabled>Nhắc đúng</button>
             <button id="incorrectAlertBtn" class="secondary" type="button" disabled>Nhắc sai rồi</button>
-            <span id="incorrectAlertStatus" class="hint">Nút sẽ bật sau khi AI phát cảnh báo.</span>
+            <button id="missedAlertBtn" class="secondary" type="button" disabled>AI bỏ sót</button>
+            <span id="incorrectAlertStatus" class="hint">“Nhắc đúng/sai” sẽ bật sau cảnh báo; “AI bỏ sót” dùng khi camera đang chạy.</span>
           </div>
+          <p class="ai-disclaimer">Kết quả AI chỉ mang tính ước lượng và không thay thế đánh giá của giáo viên, phụ huynh hoặc chuyên gia.</p>
           <div id="cameraMessage" class="message info">Bấm “Bật camera” để bắt đầu.</div>
         </div>
       </div>
@@ -181,6 +185,12 @@
         <div class="kpi"><span>Ngồi sai</span><strong id="kpiBad">0 phút</strong></div>
         <div class="kpi"><span>Tỷ lệ ngồi đúng</span><strong id="kpiCorrect">--</strong></div>
         <div class="kpi"><span>Số cảnh báo âm thanh</span><strong id="kpiAlerts">0</strong></div>
+      </div>
+
+      <div class="kpis feedback-kpis">
+        <div class="kpi"><span>Nhắc đúng</span><strong id="kpiCorrectAlerts">0</strong></div>
+        <div class="kpi"><span>Nhắc nhầm</span><strong id="kpiIncorrectAlerts">0</strong></div>
+        <div class="kpi"><span>AI bỏ sót</span><strong id="kpiMissedAlerts">0</strong></div>
       </div>
 
       <div class="grid two charts">
@@ -207,9 +217,10 @@
         <label>Tên học sinh<input id="studentName" /></label>
         <label>Email phụ huynh<input id="parentEmail" type="email" /></label>
         <label>
-          Cảnh báo âm thanh khi ngồi sai liên tục quá (giây)
+          Lặp lại cảnh báo sau (giây)
           <input id="localAlertSeconds" type="number" min="3" value="10" />
         </label>
+        <p class="hint">AI chỉ cảnh báo khi phần lớn kết quả trong cửa sổ 15 giây gần nhất là tư thế sai. Bạn có thể thử thời gian lặp cùng ngưỡng confidence do Super Admin cấu hình.</p>
         <label class="check">
           <input id="emailEnabled" type="checkbox" checked />
           Gửi báo cáo tổng hợp cho phụ huynh khi kết thúc phiên học

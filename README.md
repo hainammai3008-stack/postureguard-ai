@@ -174,3 +174,12 @@ Realtime camera pipeline now uses MoveNet SinglePose Lightning to detect the sea
 - Hệ thống lưu tư thế AI đã cảnh báo, thời điểm cảnh báo và thời điểm học sinh phản hồi theo phiên theo dõi.
 - Không chụp, gửi hoặc lưu ảnh/video webcam trong luồng phản hồi này.
 - Database hiện có cần chạy một lần `supabase/postureguard_migrate_incorrect_alert_feedback_v6_17.sql` trước khi dùng tính năng. Migration trên production đã được áp dụng và xác minh ngày 2026-10-17.
+
+## v6.18 Safer alert decisions and student evaluation
+
+- Cảnh báo dùng tỷ lệ thời gian trong cửa sổ 15 giây gần nhất và chỉ nhắc khi tư thế sai chiếm trên 50% thời gian.
+- Câu nhắc âm thanh chuyển sang tiếng Việt, ngắn gọn và thân thiện.
+- Học sinh có thể đánh dấu **Nhắc đúng**, **Nhắc sai rồi** hoặc **AI bỏ sót**; dashboard tổng hợp ba số liệu trong 7 ngày để hỗ trợ thử nghiệm với học sinh thật.
+- Nhắc nghỉ sau khoảng 25 phút hoạt động, có nút tạm dừng/tiếp tục camera và ghi chú kết quả AI chỉ mang tính ước lượng.
+- Confidence vẫn do Super Admin cấu hình; thời gian lặp cảnh báo do học sinh cấu hình để có thể so sánh các cấu hình thử nghiệm.
+- Migration `supabase/postureguard_migrate_feedback_evaluation_v6_18.sql` đã được áp dụng và xác minh trên database production ngày 2026-10-17; RLS vẫn bật và index phản hồi đã tồn tại.
