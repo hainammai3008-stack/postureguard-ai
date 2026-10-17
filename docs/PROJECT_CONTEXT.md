@@ -5,7 +5,7 @@
 - Yêu cầu mới: sau khi AI phát cảnh báo âm thanh, học sinh có nút **Nhắc sai rồi** để phản hồi cảnh báo nhầm.
 - Frontend chỉ bật nút sau một cảnh báo thực tế trong phiên camera và gửi `session_id`, tư thế AI cảnh báo cùng thời điểm cảnh báo. Backend ghi thời điểm phản hồi theo đồng hồ máy chủ vào `incorrect_alert_feedback`.
 - Luồng phản hồi không chụp, gửi hoặc lưu ảnh/video webcam. Bảng dữ liệu chỉ chứa metadata phiên, tư thế và thời gian.
-- Source đã thêm migration `supabase/postureguard_migrate_incorrect_alert_feedback_v6_17.sql`. Cần kiểm tra database live rồi áp dụng migration này trước khi deploy; chưa coi migration hoặc deploy là đã hoàn thành.
+- Migration `supabase/postureguard_migrate_incorrect_alert_feedback_v6_17.sql` đã được áp dụng trên database production ngày 2026-10-17. Truy vấn sau migration xác nhận bảng có đúng 6 cột metadata `id`, `user_id`, `session_id`, `posture`, `alerted_at`, `reported_at`, tất cả đều NOT NULL và RLS đã bật; không có cột ảnh/video. Chưa deploy hoặc chạy kiểm thử camera end-to-end trên production.
 
 ## Lưu dataset ngoài Git — 2026-09-17
 

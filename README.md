@@ -173,4 +173,4 @@ Realtime camera pipeline now uses MoveNet SinglePose Lightning to detect the sea
 - Sau khi AI phát cảnh báo âm thanh, học sinh có thể bấm **Nhắc sai rồi**.
 - Hệ thống lưu tư thế AI đã cảnh báo, thời điểm cảnh báo và thời điểm học sinh phản hồi theo phiên theo dõi.
 - Không chụp, gửi hoặc lưu ảnh/video webcam trong luồng phản hồi này.
-- Database hiện có cần chạy một lần `supabase/postureguard_migrate_incorrect_alert_feedback_v6_17.sql` trước khi dùng tính năng.
+- Database hiện có cần chạy một lần `supabase/postureguard_migrate_incorrect_alert_feedback_v6_17.sql` trước khi dùng tính năng. Migration trên production đã được áp dụng và xác minh ngày 2026-10-17.
