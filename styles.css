@@ -272,6 +272,15 @@ video{
 .metric-row span{color:var(--muted)}
 .metric-row strong{text-align:right}
 
+.incorrect-alert-feedback{
+  display:flex;
+  align-items:center;
+  gap:12px;
+  flex-wrap:wrap;
+  margin-top:16px;
+}
+.incorrect-alert-feedback .hint{color:var(--muted)}
+
 .message{
   margin-top:16px;
   border-radius:12px;

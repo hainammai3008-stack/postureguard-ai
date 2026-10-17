@@ -167,3 +167,10 @@ Realtime camera pipeline now uses MoveNet SinglePose Lightning to detect the sea
 - New five-output models use `leaning_backward`, `leaning_forward`, `leaning_left`, `leaning_right`, `upright` in that order. Existing four-output models remain supported.
 - Realtime, Admin image test, alerts, dashboard, and session email report display `leaning_forward`.
 - Existing databases need `supabase/postureguard_migrate_forward_v6_16.sql` before activating a five-output model. Check the live `posture_events` constraint before running it. The production database migration was applied and verified on 2026-09-17; do not rerun solely based on this README.
+
+## v6.17 Incorrect alert feedback
+
+- Sau khi AI phát cảnh báo âm thanh, học sinh có thể bấm **Nhắc sai rồi**.
+- Hệ thống lưu tư thế AI đã cảnh báo, thời điểm cảnh báo và thời điểm học sinh phản hồi theo phiên theo dõi.
+- Không chụp, gửi hoặc lưu ảnh/video webcam trong luồng phản hồi này.
+- Database hiện có cần chạy một lần `supabase/postureguard_migrate_incorrect_alert_feedback_v6_17.sql` trước khi dùng tính năng.

@@ -1,5 +1,12 @@
 # Ngữ cảnh dự án PostureGuard AI
 
+## Phản hồi cảnh báo nhầm — 2026-10-17
+
+- Yêu cầu mới: sau khi AI phát cảnh báo âm thanh, học sinh có nút **Nhắc sai rồi** để phản hồi cảnh báo nhầm.
+- Frontend chỉ bật nút sau một cảnh báo thực tế trong phiên camera và gửi `session_id`, tư thế AI cảnh báo cùng thời điểm cảnh báo. Backend ghi thời điểm phản hồi theo đồng hồ máy chủ vào `incorrect_alert_feedback`.
+- Luồng phản hồi không chụp, gửi hoặc lưu ảnh/video webcam. Bảng dữ liệu chỉ chứa metadata phiên, tư thế và thời gian.
+- Source đã thêm migration `supabase/postureguard_migrate_incorrect_alert_feedback_v6_17.sql`. Cần kiểm tra database live rồi áp dụng migration này trước khi deploy; chưa coi migration hoặc deploy là đã hoàn thành.
+
 ## Lưu dataset ngoài Git — 2026-09-17
 
 - Theo yêu cầu mới của người dùng, bốn phần ZIP chuẩn 5 lớp và manifest được bỏ theo dõi trong Git; `.gitignore` chặn `colab/dataset_parts/` và `colab/models/`. Không xóa bản local khi bỏ khỏi index.
@@ -99,7 +106,7 @@ Webcam → crop vuông vùng trung tâm khoảng 90% → resize 224×224 → mod
 - Repository: https://github.com/hainammai3008-stack/postureguard-ai
 - Nhánh chính: main.
 - Commit ứng dụng đã pull: d99f417 — system confidence.
-- app.js khai báo APP_VERSION=6.10.0; package.json vẫn ghi 5.0.0, nên không suy ra phiên bản tính năng chỉ từ package.json.
+- app.js hiện khai báo APP_VERSION=6.17.0; package.json vẫn ghi 5.0.0, nên không suy ra phiên bản tính năng chỉ từ package.json.
 - Dự án sidebar Codex: postureguard-ai. Trên máy hiện tại, thư mục source là /Users/huymq85/private/postureguard-ai/projects/postureguard-ai. Máy khác có thể dùng đường dẫn khác.
 - Đã kiểm tra source: bốn model, confidence mặc định 0.50, trung bình 10 frame, khoảng cách 250 ms, crop 0.90, các câu cảnh báo tiếng Anh và luồng prepare/upload/finalize đều có trong code.
 - Khi pull bằng --ff-only --autostash, hai file app.js và netlify/functions/upload-model.mjs bị conflict với phần sửa upload local cũ. Đã giữ phiên bản mới từ GitHub vì luồng multipart cũ đã được thay thế.
