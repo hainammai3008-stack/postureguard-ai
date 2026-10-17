@@ -7,7 +7,8 @@
 - UI có ba phản hồi `correct_alert`, `incorrect_alert`, `missed_alert`; dashboard 7 ngày tổng hợp số lượng. Phản hồi chỉ lưu metadata, không lưu ảnh/video/frame webcam.
 - Câu cảnh báo và test âm thanh dùng tiếng Việt; phiên hoạt động khoảng 25 phút sẽ nhắc nghỉ. Tạm dừng giữ phiên nhưng dừng suy luận và khi tiếp tục sẽ tạo cửa sổ đánh giá 15 giây mới.
 - Migration `supabase/postureguard_migrate_feedback_evaluation_v6_18.sql` đã áp dụng trên production ngày 2026-10-17. Đã xác minh `feedback_type` NOT NULL, `alerted_at` nullable, constraint cho ba loại phản hồi và sáu giá trị posture, RLS bật và index `incorrect_alert_feedback_type_reported_idx` tồn tại.
-- Kiểm tra source đã qua `node --check`, `git diff --check`, kiểm tra ID DOM/metadata-only và test cửa sổ quyết định 8/15 giây có cảnh báo, 7/15 giây không cảnh báo. Còn cần deploy production và kiểm thử camera với học sinh thật; không coi kiểm thử thực địa là đã hoàn tất.
+- Kiểm tra source đã qua `node --check`, `git diff --check`, kiểm tra ID DOM/metadata-only và test cửa sổ quyết định 8/15 giây có cảnh báo, 7/15 giây không cảnh báo.
+- Commit tính năng `6b8026b` đã push lên `main`; Netlify production `https://postureguard-ai.netlify.app/` đã được xác minh phục vụ `APP_VERSION='6.18.0'`, nút tạm dừng và các nút phản hồi mới ngày 2026-10-17. Còn cần kiểm thử camera với học sinh thật; không coi kiểm thử thực địa là đã hoàn tất.
 
 ## Phản hồi cảnh báo nhầm — 2026-10-17
 
